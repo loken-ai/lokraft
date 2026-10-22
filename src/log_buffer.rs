@@ -331,7 +331,7 @@ pub fn init_gui_logging(buffer: LogBuffer) {
     // Create a subscriber with our layer
     // Use EnvFilter to respect RUST_LOG env var, defaulting to info level for our modules
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("atelier=info,reqwest=info"));
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("lokraft=info,reqwest=info"));
 
     let subscriber = tracing_subscriber::registry()
         .with(env_filter)

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to atelier. The format follows [Keep a Changelog](https://keepachangelog.com/1.1.0/).
+All notable changes to lokraft. The format follows [Keep a Changelog](https://keepachangelog.com/1.1.0/).
 
 ## [Unreleased]
 
@@ -20,6 +20,7 @@ All notable changes to atelier. The format follows [Keep a Changelog](https://ke
 
 ### Changed
 
+- Project: rename atelier to lokraft.
 - Theme: one visual grammar, two skins on three surface depths, one accent, five type sizes.
 - Theme: chat as rows in a well, Studio two columns, terminal a screen; skin colours pinned by tests.
 - Docs: screenshots for the model list and the server log.

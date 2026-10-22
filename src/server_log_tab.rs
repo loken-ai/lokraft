@@ -171,7 +171,7 @@ fn render_log_output(
                             ui.label(text::note(tip));
                             ui.add_space(widgets::GAP_WIDGETS);
                             // The EnvFilter set up in init_gui_logging reads RUST_LOG.
-                            ui.label(text::mono("RUST_LOG=atelier=debug atelier"));
+                            ui.label(text::mono("RUST_LOG=lokraft=debug lokraft"));
                         } else {
                             ui.label(text::note("No logs match the current filter."));
                         }

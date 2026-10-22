@@ -1,15 +1,15 @@
 [package]
-name = "atelier"
+name = "lokraft"
 version = "0.1.0"
 edition = "2021"
 description = "Desktop client for LOKEN: chat, and a studio for image, audio and video generation"
-repository = "https://github.com/loken-ai/atelier"
+repository = "https://github.com/loken-ai/lokraft"
 license = "MIT OR Apache-2.0"
 keywords = ["gui", "llm", "multimodal"]
 categories = ["gui", "multimedia"]
 
 [[bin]]
-name = "atelier"
+name = "lokraft"
 path = "src/main.rs"
 
 [dependencies]

@@ -161,7 +161,7 @@ pub fn top_bar(ui: &mut egui::Ui, input: &TopBarInput) -> TopBarOutput {
             ui.horizontal(|ui| {
                 ui.set_min_height(widgets::CHROME_ROW_H);
 
-                ui.label(text::title("Atelier"));
+                ui.label(text::title("Lokraft"));
                 ui.add_space(CHROME_GAP);
 
                 let status = classify_top_bar_status(input.connection, input.server_running);

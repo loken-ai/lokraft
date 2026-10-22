@@ -3,13 +3,13 @@
 // builds keep it, because that is where the tracing output is read from.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
-//! Atelier - the desktop client for LOKEN.
+//! Lokraft - the desktop client for LOKEN.
 //!
 //! A chat window and a studio for generating images, audio, speech and video, against a
 //! server running on your own machine. It holds no model itself and speaks HTTP, so it also
 //! talks to Ollama or any OpenAI-compatible endpoint.
 //!
-//! What the cluster is doing lives in atlas, not here: one machine's view of its own cards
+//! What the cluster is doing lives in lokpit, not here: one machine's view of its own cards
 //! could never show the others.
 
 pub mod api;
@@ -56,13 +56,13 @@ use app::{Args, LLMGuiApp};
 /// puts a dialog on screen naming that file. It does not prevent the crash; it ends the
 /// silence, which is what makes the next one fixable.
 fn install_crash_reporter() {
-    let path = directories::ProjectDirs::from("com", "loken", "atelier")
+    let path = directories::ProjectDirs::from("com", "loken", "lokraft")
         .map(|d| d.config_dir().join("crash.log"));
     std::panic::set_hook(Box::new(move |info| {
         // `Backtrace::force_capture` does not need the environment to ask for one, which a
         // user double-clicking an icon never will.
         let report = format!(
-            "atelier crashed
+            "lokraft crashed
 
 when: {:?}
 where: {}
@@ -100,7 +100,7 @@ backtrace:
             .unwrap_or_else(|| "The details could not be written to disk.".to_string());
         rfd::MessageDialog::new()
             .set_level(rfd::MessageLevel::Error)
-            .set_title("atelier stopped unexpectedly")
+            .set_title("lokraft stopped unexpectedly")
             .set_description(format!(
                 "{}\n\n{where_}",
                 info.payload()
@@ -145,7 +145,7 @@ fn main() -> eframe::Result<()> {
             persisted.window_height.unwrap_or(750.0),
         ])
         .with_min_inner_size([600.0, 400.0])
-        .with_title("Atelier");
+        .with_title("Lokraft");
     // On most window managers a maximised request wins over an explicit size, so
     // the size below only applies when the user has un-maximised. Absent state
     // means first run, which starts maximised.
@@ -158,7 +158,7 @@ fn main() -> eframe::Result<()> {
     };
 
     eframe::run_native(
-        "Atelier",
+        "Lokraft",
         options,
         Box::new(|cc| {
             // Install egui_extras image loaders (SVG + raster) so the

@@ -464,7 +464,7 @@ impl Transport {
 mod tests {
     //! The ignored cases here need real weights, a device, or a reference dump on
     //! this machine; nothing about them is automatic. Run one by name with
-    //!   cargo test --release -p atelier --lib NAME -- --ignored --nocapture
+    //!   cargo test --release -p lokraft --lib NAME -- --ignored --nocapture
     use super::*;
 
     #[test]

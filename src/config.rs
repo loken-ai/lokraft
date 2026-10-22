@@ -256,7 +256,7 @@ impl AppConfig {
     /// behaviour changes. They can then either restore the backup
     /// manually or accept the fresh defaults knowing what happened.
     pub fn load() -> Self {
-        let config_path = directories::ProjectDirs::from("com", "loken", "atelier")
+        let config_path = directories::ProjectDirs::from("com", "loken", "lokraft")
             .map(|d| d.config_dir().join("config.json"));
 
         let mut config = match config_path.as_ref() {
@@ -346,7 +346,7 @@ impl AppConfig {
     #[must_use = "Config save can fail (full disk, read-only mount, permission denied); \
                   handle the Result or call save() for a logged fire-and-forget"]
     pub fn try_save(&self) -> Result<std::path::PathBuf, String> {
-        let dir = directories::ProjectDirs::from("com", "loken", "atelier").ok_or_else(|| {
+        let dir = directories::ProjectDirs::from("com", "loken", "lokraft").ok_or_else(|| {
             "no platform config directory available (ProjectDirs returned None)".to_string()
         })?;
         self.save_to_dir(dir.config_dir())
@@ -355,7 +355,7 @@ impl AppConfig {
     /// Test-friendly variant: write into an explicit directory rather
     /// than the platform-resolved config dir. Lets unit tests assert
     /// success + failure paths against a tempdir without polluting
-    /// the user's real ~/.config/atelier.
+    /// the user's real ~/.config/lokraft.
     pub(crate) fn save_to_dir(
         &self,
         config_dir: &std::path::Path,
@@ -692,7 +692,7 @@ mod tests {
     /// already a workspace dep for the rest of the GUI.
     fn fresh_tempdir(label: &str) -> std::path::PathBuf {
         let path =
-            std::env::temp_dir().join(format!("atelier-config-{label}-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("lokraft-config-{label}-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&path).expect("seed tempdir");
         path
     }

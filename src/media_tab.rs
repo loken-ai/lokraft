@@ -1368,7 +1368,7 @@ mod oversize_tests {
     /// A file inside the cap passes without comment.
     #[test]
     fn a_small_file_is_accepted() {
-        let dir = std::env::temp_dir().join(format!("atelier-size-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("lokraft-size-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let p = dir.join("small.png");
         std::fs::write(&p, vec![0u8; 1024]).unwrap();
@@ -1380,7 +1380,7 @@ mod oversize_tests {
     /// the limit is - "too large" alone leaves the user guessing how much to shrink by.
     #[test]
     fn an_oversized_file_says_what_was_sent_and_what_is_allowed() {
-        let dir = std::env::temp_dir().join(format!("atelier-size-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("lokraft-size-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let p = dir.join("huge.png");
         // SPARSE, not written: the cap is large enough that materialising it would put

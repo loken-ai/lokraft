@@ -122,7 +122,7 @@ fn shoot_skin(
 /// palette has to carry the same surfaces as the dark one, and this is how
 /// to look at it.
 fn light_skin() {
-    shoot_skin(LIGHT_OUT, "atelier-chat", false, Section::Chat, |app| {
+    shoot_skin(LIGHT_OUT, "lokraft-chat", false, Section::Chat, |app| {
         app.chat.messages.push_back(ChatMessage {
             role: "user".into(),
             content: "Explain what a KV cache holds, briefly.".into(),
@@ -143,7 +143,7 @@ fn light_skin() {
     });
     shoot_skin(
         LIGHT_OUT,
-        "atelier-media",
+        "lokraft-media",
         false,
         Section::MediaStudio,
         |app| {
@@ -151,10 +151,10 @@ fn light_skin() {
             app.media.prompt = "a lighthouse on a basalt shore, low sun, long exposure".into();
         },
     );
-    shoot_skin(LIGHT_OUT, "atelier-models", false, Section::Models, |_| {});
+    shoot_skin(LIGHT_OUT, "lokraft-models", false, Section::Models, |_| {});
     shoot_skin(
         LIGHT_OUT,
-        "atelier-settings",
+        "lokraft-settings",
         false,
         Section::Settings,
         |_| {},
@@ -178,7 +178,7 @@ fn documentation() {
 /// A conversation mid-answer. An empty chat shows the placeholder and none of what the tab is
 /// for, so the fixture is a exchange with a reply still streaming.
 fn chat() {
-    shoot("atelier-chat", Section::Chat, |app| {
+    shoot("lokraft-chat", Section::Chat, |app| {
         app.chat.messages.push_back(ChatMessage {
             role: "user".into(),
             content: "Explain what a KV cache holds, briefly.".into(),
@@ -217,7 +217,7 @@ fn chat() {
 
 /// Media Studio on the image panel, with a prompt and the controls a render actually uses.
 fn media_studio() {
-    shoot("atelier-media", Section::MediaStudio, |app| {
+    shoot("lokraft-media", Section::MediaStudio, |app| {
         app.media.kind = crate::state::MediaKind::Image;
         app.media.prompt = "a lighthouse on a basalt shore, low sun, long exposure".into();
     });
@@ -225,59 +225,59 @@ fn media_studio() {
 
 /// The model list with one model loaded, and the import panel under it.
 fn models() {
-    shoot("atelier-models", Section::Models, |_| {});
+    shoot("lokraft-models", Section::Models, |_| {});
 }
 
 /// The server log with a line of every level, one of them a warning and one an error.
 fn logs() {
-    shoot("atelier-logs", Section::ServerLog, |app| {
+    shoot("lokraft-logs", Section::ServerLog, |app| {
         let lines: [(LogLevel, &str, &str, &str); 8] = [
             (
                 LogLevel::Info,
                 "14:02:03.118",
-                "atelier::api",
+                "lokraft::api",
                 "GET /api/tags 200 in 12 ms",
             ),
             (
                 LogLevel::Info,
                 "14:02:03.402",
-                "atelier::models",
+                "lokraft::models",
                 "3 models listed, 1 loaded",
             ),
             (
                 LogLevel::Debug,
                 "14:02:11.204",
-                "atelier::chat",
+                "lokraft::chat",
                 "streaming reply from qwen3:8b",
             ),
             (
                 LogLevel::Trace,
                 "14:02:11.219",
-                "atelier::api",
+                "lokraft::api",
                 "chunk 1 of the reply, 24 bytes",
             ),
             (
                 LogLevel::Info,
                 "14:02:12.480",
-                "atelier::chat",
+                "lokraft::chat",
                 "reply complete: 184 tokens in 1.2 s",
             ),
             (
                 LogLevel::Warn,
                 "14:02:40.011",
-                "atelier::models",
+                "lokraft::models",
                 "z-image is not loaded; the first render will load it",
             ),
             (
                 LogLevel::Error,
                 "14:03:02.377",
-                "atelier::api",
+                "lokraft::api",
                 "POST /v1/images/generations 503: no free device",
             ),
             (
                 LogLevel::Info,
                 "14:03:05.000",
-                "atelier::media",
+                "lokraft::media",
                 "render cancelled by the user",
             ),
         ];

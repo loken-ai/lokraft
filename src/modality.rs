@@ -296,7 +296,7 @@ pub(crate) const IMAGE_NUM_STEPS_PLACEHOLDER: u32 = 8;
 /// `stamp` comes from the caller so every file of ONE render shares it: generating it per
 /// file lets a batch straddle a second boundary and split across two names.
 pub(crate) fn output_filename(kind: &str, stamp: &str, index: usize, ext: &str) -> String {
-    format!("atelier_{kind}_{stamp}_{}.{ext}", index + 1)
+    format!("lokraft_{kind}_{stamp}_{}.{ext}", index + 1)
 }
 
 /// The stamp [`output_filename`] takes: local time, sortable, no separators that a file
@@ -1876,11 +1876,11 @@ mod tests {
     fn every_kind_is_named_the_same_way() {
         assert_eq!(
             output_filename("video", "20260802_014500", 0, "mp4"),
-            "atelier_video_20260802_014500_1.mp4"
+            "lokraft_video_20260802_014500_1.mp4"
         );
         assert_eq!(
             output_filename("image", "20260802_014500", 4, "png"),
-            "atelier_image_20260802_014500_5.png"
+            "lokraft_image_20260802_014500_5.png"
         );
         // The index is 1-based for a person reading a directory listing.
         assert!(output_filename("audio", "s", 0, "wav").ends_with("_1.wav"));

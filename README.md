@@ -1,10 +1,10 @@
-# atelier
+# lokraft
 
 The desktop client for [LOKEN](https://github.com/loken-ai/loken): a chat window, and a
 studio for generating images, audio and video against models running on your own machine.
 
 ```sh
-cargo build --release      # target/release/atelier
+cargo build --release      # target/release/lokraft
 ```
 
 It talks to the server over HTTP and holds no model itself, so it runs on a laptop while the
@@ -18,7 +18,7 @@ a reply still arriving can be stopped from the composer. The clip beside the com
 attaches an image for a vision model or speech for a transcription model, and Up on the
 first line or Down on the last recalls earlier prompts, as in a shell.
 
-![Chat: a conversation mid-answer, the first reply with its timing, the second still streaming](docs/img/atelier-chat.png)
+![Chat: a conversation mid-answer, the first reply with its timing, the second still streaming](docs/img/lokraft-chat.png)
 
 The model picker also offers **Auto (smart routing)**. The turn then goes to the server's
 conversation route, which reads the prompt and decides what it asks for: a chat answer, a
@@ -40,7 +40,7 @@ negative prompt, regions that keep two subjects apart and a seed are there when 
 needs them. Video shows what a clip will cost before it renders, because the answer can be
 an hour.
 
-![Media Studio: the image panel with a prompt, the model and its recommended settings, shape, sampling, guidance, regions and seed](docs/img/atelier-media.png)
+![Media Studio: the image panel with a prompt, the model and its recommended settings, shape, sampling, guidance, regions and seed](docs/img/lokraft-media.png)
 
 What comes back opens in a viewer with fullscreen and zoom, above a strip of earlier
 generations that a new run does not wipe.
@@ -51,7 +51,7 @@ What the server can serve, filtered by kind and sorted by name, size or date, wi
 loaded ones marked. A model is loaded, unloaded or deleted from its row, and a new one is
 pulled from Ollama or Hugging Face by tag, with a few quick installs a click away.
 
-![Models: three models with their kinds and sizes, one loaded, and the import bar](docs/img/atelier-models.png)
+![Models: three models with their kinds and sizes, one loaded, and the import bar](docs/img/lokraft-models.png)
 
 ## Terminal and server logs
 
@@ -59,10 +59,10 @@ The server's own log as it works, filtered by level and searched by text, each l
 with the part of the server that wrote it. A terminal beside it takes the server's own
 commands, to list, load, unload and pull models and to ask what the server is doing.
 
-![Server logs: the server's lines by level, a warning and an error picked out](docs/img/atelier-logs.png)
+![Server logs: the server's lines by level, a warning and an error picked out](docs/img/lokraft-logs.png)
 
 What each machine in a cluster is doing is not here: it lives in
-[atlas](https://github.com/loken-ai/atlas). One machine's view of its own cards could never
+[lokpit](https://github.com/loken-ai/lokpit). One machine's view of its own cards could never
 show the others.
 
 The pictures are rendered by the test suite from state written in `src/screenshots.rs`, so

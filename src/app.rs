@@ -566,10 +566,10 @@ async fn speech_body_to_output(
 // Command-line Arguments
 // ============================================================================
 
-/// Atelier - chat and media generation against a local inference server.
+/// Lokraft - chat and media generation against a local inference server.
 #[derive(Parser)]
-#[command(name = "atelier")]
-#[command(about = "Atelier - chat and media generation against a local inference server")]
+#[command(name = "lokraft")]
+#[command(about = "Lokraft - chat and media generation against a local inference server")]
 #[command(version)]
 pub struct Args {
     /// Model to load on startup

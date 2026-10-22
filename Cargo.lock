@@ -487,36 +487,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "atelier"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64",
- "chrono",
- "clap",
- "cpal",
- "directories",
- "eframe",
- "egui",
- "egui_commonmark",
- "egui_extras",
- "egui_kittest",
- "image",
- "mp4",
- "reqwest",
- "rfd",
- "rusty_h264",
- "serde",
- "serde_json",
- "thiserror 2.0.19",
- "tokio",
- "toml",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
 name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2800,6 +2770,36 @@ name = "log"
 version = "0.4.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
+
+[[package]]
+name = "lokraft"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "chrono",
+ "clap",
+ "cpal",
+ "directories",
+ "eframe",
+ "egui",
+ "egui_commonmark",
+ "egui_extras",
+ "egui_kittest",
+ "image",
+ "mp4",
+ "reqwest",
+ "rfd",
+ "rusty_h264",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
 
 [[package]]
 name = "loop9"

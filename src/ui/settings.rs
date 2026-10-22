@@ -117,7 +117,7 @@ pub fn render(
             // can be undone by copying the backup back. Best-effort:
             // failures log + the reset still proceeds (a backup
             // hiccup shouldn't block the user's intent).
-            if let Some(dirs) = directories::ProjectDirs::from("com", "loken", "atelier") {
+            if let Some(dirs) = directories::ProjectDirs::from("com", "loken", "lokraft") {
                 AppConfig::backup_before_reset(dirs.config_dir());
             }
             *config = AppConfig::default();
