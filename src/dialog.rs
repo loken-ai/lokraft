@@ -181,8 +181,10 @@ mod tests {
         // false when the worker exits — even via early return.
         //
         // We can't actually drive an rfd dialog in tests, so the
-        // body closure is a no-op completion signal. Block on a
-        // brief sleep loop until the flag clears, then assert.
+        // body closure waits for a release signal from the test and
+        // then reports completion. Holding the worker until the flag
+        // has been checked keeps the first assertion independent of
+        // thread scheduling.
         use std::sync::atomic::{AtomicBool, Ordering};
         use std::sync::Arc;
         let flag = Arc::new(AtomicBool::new(false));
@@ -193,19 +195,22 @@ mod tests {
         assert!(!flag.load(Ordering::Relaxed));
 
         let done_clone = done.clone();
+        let (release, released) = std::sync::mpsc::channel::<()>();
         spawn_dialog_worker(flag.clone(), ctx, move |_| {
-            // Inside the worker, flag should still be true (the
-            // ClearOnDrop guard's Drop hasn't fired yet).
+            // The worker holds until the test has checked the flag, so
+            // the ClearOnDrop guard cannot have fired yet.
+            released.recv().expect("the test releases the worker");
             done_clone.store(true, Ordering::Relaxed);
         });
 
         // Immediately after spawn returns: flag is true (set
-        // synchronously). The worker may or may not have run yet.
+        // synchronously) and the worker is still held.
         assert!(
             flag.load(Ordering::Relaxed),
             "flag must be true immediately after spawn — protects against \
              rapid re-clicks spawning duplicate workers"
         );
+        release.send(()).expect("the worker is waiting");
 
         // Wait up to 2 s for the worker to finish + the ClearOnDrop
         // guard to flip the flag back to false. Polling instead of
