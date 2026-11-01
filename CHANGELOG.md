@@ -10,6 +10,7 @@ All notable changes to lokraft. The format follows [Keep a Changelog](https://ke
 - chat: edit the generation parameters from a panel, each sent only once set.
 - connections: replace the API profiles with a list of connections, switched from the top bar.
 - ui: show the section shortcuts in the sidebar tooltips.
+- studio: start a render with Ctrl+Enter.
 
 ### Changed
 

@@ -348,6 +348,10 @@ fn render_generate(ui: &mut egui::Ui, media: &mut MediaState, out: &mut MediaRen
         _ => !media.prompt.trim().is_empty(),
     };
     let can_generate = !media.is_generating && inputs_ready;
+    // Ctrl+Enter generates from anywhere in the form, as the button does.
+    if can_generate && ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Enter)) {
+        out.generate_clicked = true;
+    }
     ui.horizontal(|ui| {
         let gen_btn = widgets::primary_button_icon(
             Icon::Bolt,
@@ -357,8 +361,20 @@ fn render_generate(ui: &mut egui::Ui, media: &mut MediaState, out: &mut MediaRen
                 "Generate"
             },
         )
-        .min_size(GENERATE_SIZE);
-        if ui.add_enabled(can_generate, gen_btn).clicked() {
+        .min_size(egui::vec2(
+            ui.available_width()
+                - if media.is_generating {
+                    CANCEL_SIZE.x + widgets::GAP_WIDGETS
+                } else {
+                    0.0
+                },
+            GENERATE_SIZE.y,
+        ));
+        if ui
+            .add_enabled(can_generate, gen_btn)
+            .on_hover_text("Start the render. Shortcut: Ctrl+Enter")
+            .clicked()
+        {
             out.generate_clicked = true;
         }
         if media.is_generating {
@@ -2262,7 +2278,11 @@ fn render_results(
     }
 
     ui.add_space(widgets::GAP_WIDGETS);
-    // The stage bar: what this is, and the settings it was made with.
+    // The stage bar: what this is, the settings it was made with, and what can be done
+    // with it. The actions apply to the first image and are carried out with the image.
+    let mut toolbar_fullscreen = false;
+    let mut toolbar_edit = false;
+    let mut toolbar_save = false;
     ui.horizontal(|ui| {
         ui.label(text::title("Result"));
         if media.kind == MediaKind::Image && !media.result_images.is_empty() {
@@ -2271,6 +2291,36 @@ fn render_results(
                 &format!("{} x {}", media.image.width, media.image.height),
             );
             widgets::pill(ui, &format!("{} steps", media.image.steps));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let saving = media
+                    .dialog_in_flight
+                    .load(std::sync::atomic::Ordering::Relaxed);
+                if ui
+                    .add_enabled(!saving, egui::Button::new(text::value("Save")))
+                    .on_hover_text(if saving {
+                        "A save dialog is already open"
+                    } else {
+                        "Save this image"
+                    })
+                    .clicked()
+                {
+                    toolbar_save = true;
+                }
+                if ui
+                    .add(widgets::quiet_button("Edit"))
+                    .on_hover_text("Send this image to the Image Edit kind")
+                    .clicked()
+                {
+                    toolbar_edit = true;
+                }
+                if ui
+                    .add(widgets::quiet_button("Fullscreen"))
+                    .on_hover_text("View this image at full size")
+                    .clicked()
+                {
+                    toolbar_fullscreen = true;
+                }
+            });
         }
     });
     ui.add_space(widgets::GAP_WIDGETS);
@@ -2316,8 +2366,11 @@ fn render_results(
                 texes.push(tex.clone());
             }
             // Which image the hover controls acted on, resolved after the borrow ends.
-            let mut edit_idx: Option<usize> = None;
-            let mut save_idx: Option<usize> = None;
+            let mut edit_idx: Option<usize> = toolbar_edit.then_some(0);
+            let mut save_idx: Option<usize> = toolbar_save.then_some(0);
+            if toolbar_fullscreen {
+                crate::image_viewer::request_open_set(ui.ctx(), &texes, 0);
+            }
             widgets::screen_well(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     for (i, tex_handle) in texes.iter().enumerate() {
