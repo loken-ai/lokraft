@@ -5,6 +5,7 @@ All notable changes to lokraft. The format follows [Keep a Changelog](https://ke
 ## [Unreleased]
 
 ### Added
+- chat: edit the generation parameters from a panel, each sent only once set.
 
 ### Fixed
 

@@ -184,6 +184,8 @@ pub struct ChatState {
     pub picker_search: String,
     /// How many times the picker was opened: each opening is a fresh popup area.
     pub picker_opening: u64,
+    /// What the generation parameters panel shows while it is open.
+    pub gen_fields: crate::generation::GenFields,
     /// Smart routing: send turns to /conversation, where the server picks the
     /// right model per prompt (rules + a tiny classifier LLM) — chat, vision,
     /// image generation or TTS — instead of the fixed selected model.

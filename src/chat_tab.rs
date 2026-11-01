@@ -48,6 +48,8 @@ const ICON_PT: f32 = 14.0;
 const ICON_PT_SMALL: f32 = 11.0;
 /// Fixed cell of the chrome row: the modality.
 const MODALITY_W: f32 = 64.0;
+/// Width of the generation parameters panel.
+const GENERATION_PANEL_W: f32 = 320.0;
 /// Characters of a model name shown in the chrome row.
 const MODEL_CHARS: usize = 25;
 /// The model picker and its popup.
@@ -117,6 +119,7 @@ pub fn render(
     ui: &mut egui::Ui,
     chat: &mut ChatState,
     models: &mut ModelState,
+    generation: &mut crate::generation::GenParams,
     md_cache: &mut CommonMarkCache,
     image_textures: &mut HashMap<String, TextureHandle>,
 ) -> ChatRenderOutput {
@@ -389,7 +392,7 @@ pub fn render(
 
     ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
         // Header card
-        render_chat_header(ui, chat, models, image_textures, md_cache);
+        render_chat_header(ui, chat, models, generation, image_textures, md_cache);
 
         ui.add_space(12.0);
 
@@ -683,6 +686,7 @@ fn render_chat_header(
     ui: &mut egui::Ui,
     chat: &mut ChatState,
     models: &mut ModelState,
+    generation: &mut crate::generation::GenParams,
     image_textures: &mut HashMap<String, TextureHandle>,
     md_cache: &mut CommonMarkCache,
 ) {
@@ -924,6 +928,8 @@ fn render_chat_header(
                 image_textures.clear();
                 md_cache.clear_scrollable();
             }
+            ui.add_space(widgets::GAP_WIDGETS);
+            generation_button(ui, chat, generation);
         });
     });
 }
@@ -1994,6 +2000,115 @@ fn render_typing_indicator(
         widgets::lamp_inline(ui, true, theme::accent());
         ui.label(text::note(label_text));
     });
+}
+
+/// The Parameters button and its panel. Every field is empty until a person sets it,
+/// and an empty field is not sent: the server applies the defaults of the model.
+fn generation_button(
+    ui: &mut egui::Ui,
+    chat: &mut ChatState,
+    generation: &mut crate::generation::GenParams,
+) {
+    use crate::generation::{GenField, GenFields};
+    let changed = !generation.is_empty();
+    let label = if changed {
+        "Parameters (changed)"
+    } else {
+        "Parameters"
+    };
+    let button = ui.add(egui::Button::new(text::note(label)).frame(false));
+    let button = button.on_hover_text(if changed {
+        "Generation parameters. Some are changed: only those are sent."
+    } else {
+        "Generation parameters. None is changed, so the server decides."
+    });
+    if button.clicked() {
+        chat.gen_fields = GenFields::from_params(generation);
+    }
+    let id = ui.make_persistent_id("generation_parameters");
+    egui::Popup::menu(&button)
+        .id(id)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .width(GENERATION_PANEL_W)
+        .show(|ui| {
+            egui::ScrollArea::vertical()
+                .max_height(widgets::popup_max_h(ui))
+                .show(ui, |ui| {
+            ui.label(text::label("GENERATION PARAMETERS"));
+            widgets::caption_row(
+                ui,
+                "Empty means the server decides, with the defaults of the model. Only a value you set is sent.",
+            );
+            ui.add_space(widgets::GAP_LABEL);
+
+            let before = chat.gen_fields.clone();
+            let mut reset = false;
+            {
+                let f = &mut chat.gen_fields;
+                let row = |ui: &mut egui::Ui, caps: &str, value: &mut String, hint: &str| {
+                    ui.label(text::label(caps));
+                    ui.add(
+                        egui::TextEdit::singleline(value)
+                            .hint_text(hint)
+                            .desired_width(f32::INFINITY),
+                    );
+                };
+                egui::Grid::new("generation_fields")
+                    .num_columns(2)
+                    .spacing([widgets::GAP_WIDGETS, widgets::GAP_LABEL])
+                    .show(ui, |ui| {
+                        row(ui, "TEMPERATURE", &mut f.temperature, "server default");
+                        ui.end_row();
+                        row(ui, "TOP P", &mut f.top_p, "server default");
+                        ui.end_row();
+                        row(ui, "TOP K", &mut f.top_k, "server default");
+                        ui.end_row();
+                        row(ui, "REPEAT PENALTY", &mut f.repeat_penalty, "server default");
+                        ui.end_row();
+                        row(ui, "CONTEXT", &mut f.num_ctx, "server default");
+                        ui.end_row();
+                        row(ui, "MAX TOKENS", &mut f.max_tokens, "server default, -1 is no limit");
+                        ui.end_row();
+                        row(ui, "SEED", &mut f.seed, "random");
+                        ui.end_row();
+                        row(ui, "STOP", &mut f.stop, "comma separated");
+                        ui.end_row();
+                    });
+            }
+            let bad = if chat.gen_fields != before {
+                chat.gen_fields.apply(generation)
+            } else {
+                Vec::new()
+            };
+            for field in bad {
+                let name = match field {
+                    GenField::Temperature => "Temperature is a number, 0 or more.",
+                    GenField::TopP => "Top P is a number above 0 and up to 1.",
+                    GenField::TopK => "Top K is a whole number.",
+                    GenField::RepeatPenalty => "Repeat penalty is a number above 0.",
+                    GenField::NumCtx => "Context is a whole number of tokens above 0.",
+                    GenField::MaxTokens => "Max tokens is a whole number, -1 for no limit.",
+                    GenField::Seed => "Seed is a whole number.",
+                };
+                ui.label(text::note(name).color(theme::error()));
+            }
+            ui.add_space(widgets::GAP_LABEL);
+            if ui
+                .add_enabled(
+                    !generation.is_empty(),
+                    egui::Button::new(text::note("Reset all")),
+                )
+                .on_hover_text("Clear every parameter so the server decides")
+                .clicked()
+            {
+                reset = true;
+            }
+            if reset {
+                *generation = crate::generation::GenParams::default();
+                chat.gen_fields = GenFields::default();
+            }
+            });
+        });
 }
 
 #[cfg(test)]

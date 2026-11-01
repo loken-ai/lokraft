@@ -359,6 +359,11 @@ pub fn close_button(ui: &mut Ui, size: f32) -> Response {
     response
 }
 
+/// The tallest a popup may be: most of the window, so what overflows scrolls.
+pub fn popup_max_h(ui: &Ui) -> f32 {
+    ui.ctx().content_rect().height() * 0.7
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

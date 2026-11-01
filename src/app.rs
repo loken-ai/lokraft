@@ -3360,6 +3360,7 @@ impl eframe::App for LLMGuiApp {
 
                 match self.current_section {
                     Section::Chat => {
+                        let generation_before = self.config.generation.clone();
                         let crate::chat_tab::ChatRenderOutput {
                             send_clicked,
                             modality: modality_for_gate,
@@ -3367,9 +3368,14 @@ impl eframe::App for LLMGuiApp {
                             ui,
                             &mut self.chat,
                             &mut self.models,
+                            &mut self.config.generation,
                             &mut self.markdown_cache,
                             &mut self.image_textures,
                         );
+
+                        if self.config.generation != generation_before {
+                            self.config.save();
+                        }
 
                         // Persist a dropdown-driven model change so it
                         // survives restarts. Mirrors the persistence done in
