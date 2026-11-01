@@ -296,6 +296,8 @@ pub mod text {
 
     /// A label over or beside a control: capitals, dim. Callers pass capitals.
     pub const LABEL_PT: f32 = 11.0;
+    /// The label of a field, above it.
+    pub const LABEL_FIELD_PT: f32 = 12.0;
     /// A value, a button, a name: the reading size of a control.
     pub const VALUE_PT: f32 = 13.0;
     /// A section title: capitals in the accent.
@@ -351,6 +353,15 @@ pub mod text {
         RichText::new(s)
             .size(VALUE_PT)
             .strong()
+            .color(palette().ink)
+    }
+    /// The label of a field, above it: medium weight, in the ink.
+    pub fn field_label(s: &str) -> RichText {
+        RichText::new(s)
+            .font(FontId::new(
+                LABEL_FIELD_PT,
+                FontFamily::Name(super::FONT_MEDIUM.into()),
+            ))
             .color(palette().ink)
     }
     pub fn section(caps: &str) -> RichText {

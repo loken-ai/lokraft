@@ -81,6 +81,33 @@ fn short_model_label(name: &str) -> String {
     }
 }
 
+/// Lay out the 2 halves of a form side by side when there is room, else one over the other.
+/// `add` is called once per half, with the half's number.
+fn two_up(ui: &mut egui::Ui, mut add: impl FnMut(&mut egui::Ui, usize)) {
+    if ui.available_width() >= PARAMS_TWO_COLUMN_MIN_W {
+        ui.columns(2, |cols| {
+            add(&mut cols[0], 0);
+            add(&mut cols[1], 1);
+        });
+    } else {
+        add(ui, 0);
+        ui.add_space(widgets::GAP_WIDGETS);
+        add(ui, 1);
+    }
+}
+
+/// Least width of the parameter area for 2 columns of cards.
+const PARAMS_TWO_COLUMN_MIN_W: f32 = 640.0;
+
+/// Space kept between the form and its scroll bar.
+const FORM_SCROLL_GAP: i8 = 14;
+/// Room left at the right of a full-width list so its arrow is not cut.
+const COMBO_INSET: f32 = 8.0;
+
+/// Width of the form column, and the least window width that gets 2 columns.
+const FORM_W: f32 = 440.0;
+const TWO_COLUMN_MIN_W: f32 = 820.0;
+
 /// Render the Media Studio tab.
 pub fn render(
     ui: &mut egui::Ui,
@@ -97,226 +124,293 @@ pub fn render(
     // line reflects the write result this frame.
     crate::dialog::drain_pending_dialog(media);
 
-    egui::ScrollArea::vertical()
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            widgets::chrome_row(ui, |ui| {
-                Icon::Bolt.show(ui, ICON_PT, theme::ink());
-                ui.label(text::title("Studio"));
-                ui.add_space(widgets::GAP_WIDGETS);
-                widgets::caption_row(
-                    ui,
-                    "Generate images, music, sound effects, MIDI, video, and speech.",
-                );
-            });
-            ui.add_space(widgets::GAP_WIDGETS);
+    widgets::chrome_row(ui, |ui| {
+        Icon::Bolt.show(ui, ICON_PT, theme::ink());
+        ui.label(text::title("Studio"));
+        ui.add_space(widgets::GAP_WIDGETS);
+        widgets::caption_row(
+            ui,
+            "Generate images, music, sound effects, MIDI, video, and speech.",
+        );
+    });
+    ui.add_space(widgets::GAP_WIDGETS);
 
-            // The kinds, as tabs; the selected one is underlined.
-            let labels: Vec<&str> = MediaKind::ALL.iter().map(|k| k.label()).collect();
-            let selected = MediaKind::ALL
-                .iter()
-                .position(|k| *k == media.kind)
-                .unwrap_or(0);
-            if let Some(i) = widgets::tab_bar(ui, selected, &labels) {
-                media.set_kind(MediaKind::ALL[i]);
-            }
-            widgets::caption_row(ui, media.kind.tip());
-            ui.add_space(widgets::GAP_WIDGETS);
+    // The kinds, as tabs; the selected one is underlined.
+    let labels: Vec<&str> = MediaKind::ALL.iter().map(|k| k.label()).collect();
+    let selected = MediaKind::ALL
+        .iter()
+        .position(|k| *k == media.kind)
+        .unwrap_or(0);
+    if let Some(i) = widgets::tab_bar(ui, selected, &labels) {
+        media.set_kind(MediaKind::ALL[i]);
+    }
+    widgets::caption_row(ui, media.kind.tip());
+    ui.add_space(widgets::GAP_WIDGETS);
 
-            // The prompt, in its own panel, on a well.
-            if !matches!(media.kind, MediaKind::Transcribe | MediaKind::Separate) {
-                let prompt_title = match media.kind {
-                    MediaKind::Speech => "TEXT",
-                    _ => "PROMPT",
-                };
-                widgets::section_panel(ui, prompt_title, |ui| {
-                    let hint = media.kind.prompt_hint();
-                    widgets::well(ui, |ui| {
-                        ui.add(
-                            egui::TextEdit::multiline(&mut media.prompt)
-                                .frame(egui::Frame::NONE)
-                                .desired_rows(PROMPT_ROWS)
-                                .desired_width(f32::INFINITY)
-                                .hint_text(hint),
-                        );
-                    });
-                    // The enhancer rewrites the prompt with a local model tuned to this
-                    // kind; Undo restores the text it replaced.
-                    ui.add_space(widgets::GAP_LABEL);
-                    ui.horizontal(|ui| {
-                        if media.enhancing_prompt {
-                            widgets::lamp_inline(ui, true, theme::accent());
-                            ui.label(text::label("ENHANCING"));
-                        } else {
-                            let can_enhance =
-                                !media.prompt.trim().is_empty() && !media.is_generating;
-                            if ui
-                                .add_enabled(
-                                    can_enhance,
-                                    egui::Button::image_and_text(
-                                        Icon::Bolt.image(ICON_PT_SMALL, theme::ink()),
-                                        text::note("Enhance"),
-                                    ),
-                                )
-                                .on_hover_text(
-                                    "Rewrite the prompt with a local model: adds concrete detail, \
-                                     style and quality cues suited to this media type.",
-                                )
-                                .clicked()
-                            {
-                                out.enhance_clicked = true;
-                            }
-                            // Which model rewrites. Auto walks the candidates and validates
-                            // each reply; an explicit pick is used as-is.
-                            let chat_models: Vec<&str> = models
-                                .iter()
-                                .filter(|m| m.has_capability("chat"))
-                                .map(|m| m.name.as_str())
-                                .collect();
-                            if !chat_models.is_empty() {
-                                let current = media
-                                    .enhance_model
-                                    .clone()
-                                    .unwrap_or_else(|| "Auto".to_string());
-                                egui::ComboBox::from_id_salt("enhance_model")
-                                    .selected_text(text::note(&short_model_label(&current)))
-                                    .width(ENHANCE_MODEL_W)
-                                    .show_ui(ui, |ui| {
-                                        if ui
-                                            .selectable_label(media.enhance_model.is_none(), "Auto")
-                                            .on_hover_text(
-                                                "Try capable models in order and keep the first \
-                                                 reply that is really an improved prompt.",
-                                            )
-                                            .clicked()
-                                        {
-                                            media.enhance_model = None;
-                                        }
-                                        for name in &chat_models {
-                                            let sel = media.enhance_model.as_deref() == Some(*name);
-                                            if ui.selectable_label(sel, *name).clicked() {
-                                                media.enhance_model = Some((*name).to_string());
-                                            }
-                                        }
-                                    })
-                                    .response
-                                    .on_hover_text("Model used by Enhance");
-                            }
-                            if media.prompt_before_enhance.is_some()
-                                && ui
-                                    .add(egui::Button::new(text::note("Undo")).frame(false))
-                                    .on_hover_text(
-                                        "Restore the prompt as it was before the enhancement.",
-                                    )
-                                    .clicked()
-                            {
-                                if let Some(prev) = media.prompt_before_enhance.take() {
-                                    media.prompt = prev;
-                                }
-                            }
-                        }
-                    });
-                });
-                ui.add_space(widgets::GAP_WIDGETS);
-            }
-
-            // The parameters of this kind, grouped in section panels.
-            render_params(ui, media, &mut out, models, loras);
-            ui.add_space(widgets::GAP_WIDGETS);
-
-            // ── Generate button + busy state ──────────────────────────
-            let inputs_ready = match media.kind {
-                // Image Edit needs an instruction + a source image.
-                MediaKind::ImageEdit => {
-                    !media.prompt.trim().is_empty() && media.image_edit.source.is_some()
-                }
-                // Transcribe needs only an audio file.
-                MediaKind::Transcribe => media.transcribe.audio.is_some(),
-                MediaKind::Separate => media.separate.audio.is_some(),
-                _ => !media.prompt.trim().is_empty(),
-            };
-            let can_generate = !media.is_generating && inputs_ready;
-            ui.horizontal(|ui| {
-                let gen_btn = widgets::primary_button_icon(
-                    Icon::Bolt,
-                    if media.is_generating {
-                        "Generating..."
-                    } else {
-                        "Generate"
-                    },
-                )
-                .min_size(GENERATE_SIZE);
-                if ui.add_enabled(can_generate, gen_btn).clicked() {
-                    out.generate_clicked = true;
-                }
-                if media.is_generating {
-                    ui.add_space(widgets::GAP_WIDGETS);
-                    let cancel_btn =
-                        widgets::danger_button_icon(Icon::Stop, "Stop").min_size(CANCEL_SIZE);
-                    let server_can_stop = media
-                        .render_id
-                        .lock()
-                        .map(|id| id.is_some())
-                        .unwrap_or(false);
-                    if ui
-                        .add(cancel_btn)
-                        .on_hover_text(crate::state::cancel_tooltip(server_can_stop))
-                        .clicked()
-                    {
-                        // The identifier is handed to the caller, which owns the HTTP
-                        // client: stopping a render means TELLING the server, because
-                        // dropping the connection does not.
-                        media.pending_cancel = media.cancel_generation();
-                    }
-                    ui.add_space(widgets::GAP_WIDGETS);
-                    widgets::lamp_inline(ui, true, theme::accent());
-                }
-                // What this render is expected to cost, next to the button that starts it.
-                // Video is the one kind where the answer can be an hour, which is not
-                // something to discover by waiting it out.
-                //
-                // Absent until the server has answered: nothing at all beats a zero, which
-                // reads as "instant" for precisely the settings that are not.
-                if media.kind == MediaKind::Video && !media.is_generating {
-                    if let Some(seconds) = media.video_estimate {
+    if ui.available_width() >= TWO_COLUMN_MIN_W {
+        // The form on the left, with Generate always in view under it, and what
+        // comes back on the right.
+        egui::Panel::left("studio_form")
+            .exact_size(FORM_W)
+            .resizable(false)
+            .frame(egui::Frame::NONE)
+            .show(ui, |ui| {
+                egui::Panel::bottom("studio_actions")
+                    .resizable(false)
+                    .frame(egui::Frame::NONE)
+                    .show(ui, |ui| {
                         ui.add_space(widgets::GAP_WIDGETS);
-                        ui.label(text::readout(&format!(
-                            "{} of denoising",
-                            format_estimate(seconds)
-                        )))
-                        .on_hover_text(
-                            "Expected time in the denoising loop for these settings. \
-                             Loading the checkpoint and decoding the frames are on top \
-                             of it, so a short clip takes noticeably longer than this \
-                             and a long one barely more.",
-                        );
-                    }
-                }
-            });
-            ui.add_space(widgets::GAP_WIDGETS);
-
-            render_status(ui, media);
-
-            if let Some(err) = media.error.clone() {
-                ui.add_space(widgets::GAP_LABEL);
-                widgets::panel_frame(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        widgets::lamp_inline(ui, true, theme::error());
-                        ui.label(text::note(&err).color(theme::error()));
+                        render_generate(ui, media, &mut out);
                     });
-                });
-            }
-
-            render_results(ui, media, image_textures, player, video);
-
-            ui.add_space(widgets::GAP_SECTIONS);
-        });
+                egui::CentralPanel::default()
+                    .frame(egui::Frame::NONE)
+                    .show(ui, |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("studio_form_scroll")
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                egui::Frame::NONE
+                                    .inner_margin(egui::Margin {
+                                        right: FORM_SCROLL_GAP,
+                                        ..Default::default()
+                                    })
+                                    .show(ui, |ui| {
+                                        render_prompt(ui, media, &mut out, models);
+                                        render_params(ui, media, &mut out, models, loras);
+                                    });
+                            });
+                    });
+            });
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE.inner_margin(egui::Margin {
+                left: widgets::GAP_SECTIONS as i8,
+                ..Default::default()
+            }))
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("studio_result_scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        let top = ui.cursor().top();
+                        render_results(ui, media, image_textures, player, video);
+                        if ui.cursor().top() == top {
+                            widgets::empty_state(
+                                ui,
+                                Icon::Bolt,
+                                "Nothing generated yet",
+                                "What comes back appears here.",
+                            );
+                        }
+                        ui.add_space(widgets::GAP_SECTIONS);
+                    });
+            });
+    } else {
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                render_prompt(ui, media, &mut out, models);
+                render_params(ui, media, &mut out, models, loras);
+                ui.add_space(widgets::GAP_WIDGETS);
+                render_generate(ui, media, &mut out);
+                render_results(ui, media, image_textures, player, video);
+                ui.add_space(widgets::GAP_SECTIONS);
+            });
+    }
 
     // Drawn LAST and against the context, not the scroll area, so it covers the tab
     // rather than scrolling with it.
     render_video_viewer(ui.ctx(), &mut media.video_viewer, video);
 
     out
+}
+
+/// The prompt of the kind being shown, with the enhancer under it.
+fn render_prompt(
+    ui: &mut egui::Ui,
+    media: &mut MediaState,
+    out: &mut MediaRenderOutput,
+    models: &[crate::api::types::ModelInfo],
+) {
+    // The prompt, in its own panel, on a well.
+    if !matches!(media.kind, MediaKind::Transcribe | MediaKind::Separate) {
+        let prompt_title = match media.kind {
+            MediaKind::Speech => "TEXT",
+            _ => "PROMPT",
+        };
+        form_section(ui, prompt_title, |ui| {
+            ui.label(text::field_label(&sentence_case(prompt_title)));
+            ui.add_space(widgets::GAP_LABEL);
+            let hint = media.kind.prompt_hint();
+            widgets::well(ui, |ui| {
+                ui.add(
+                    egui::TextEdit::multiline(&mut media.prompt)
+                        .frame(egui::Frame::NONE)
+                        .desired_rows(PROMPT_ROWS)
+                        .desired_width(f32::INFINITY)
+                        .hint_text(hint),
+                );
+            });
+            // The enhancer rewrites the prompt with a local model tuned to this
+            // kind; Undo restores the text it replaced.
+            ui.add_space(widgets::GAP_LABEL);
+            ui.horizontal(|ui| {
+                if media.enhancing_prompt {
+                    widgets::lamp_inline(ui, true, theme::accent());
+                    ui.label(text::label("ENHANCING"));
+                } else {
+                    let can_enhance = !media.prompt.trim().is_empty() && !media.is_generating;
+                    if ui
+                        .add_enabled(
+                            can_enhance,
+                            egui::Button::image_and_text(
+                                Icon::Bolt.image(ICON_PT_SMALL, theme::ink()),
+                                text::note("Enhance"),
+                            ),
+                        )
+                        .on_hover_text(
+                            "Rewrite the prompt with a local model: adds concrete detail, \
+                                     style and quality cues suited to this media type.",
+                        )
+                        .clicked()
+                    {
+                        out.enhance_clicked = true;
+                    }
+                    // Which model rewrites. Auto walks the candidates and validates
+                    // each reply; an explicit pick is used as-is.
+                    let chat_models: Vec<&str> = models
+                        .iter()
+                        .filter(|m| m.has_capability("chat"))
+                        .map(|m| m.name.as_str())
+                        .collect();
+                    if !chat_models.is_empty() {
+                        let current = media
+                            .enhance_model
+                            .clone()
+                            .unwrap_or_else(|| "Auto".to_string());
+                        egui::ComboBox::from_id_salt("enhance_model")
+                            .selected_text(text::note(&short_model_label(&current)))
+                            .width(ENHANCE_MODEL_W)
+                            .show_ui(ui, |ui| {
+                                if ui
+                                    .selectable_label(media.enhance_model.is_none(), "Auto")
+                                    .on_hover_text(
+                                        "Try capable models in order and keep the first \
+                                                 reply that is really an improved prompt.",
+                                    )
+                                    .clicked()
+                                {
+                                    media.enhance_model = None;
+                                }
+                                for name in &chat_models {
+                                    let sel = media.enhance_model.as_deref() == Some(*name);
+                                    if ui.selectable_label(sel, *name).clicked() {
+                                        media.enhance_model = Some((*name).to_string());
+                                    }
+                                }
+                            })
+                            .response
+                            .on_hover_text("Model used by Enhance");
+                    }
+                    if media.prompt_before_enhance.is_some()
+                        && ui
+                            .add(egui::Button::new(text::note("Undo")).frame(false))
+                            .on_hover_text("Restore the prompt as it was before the enhancement.")
+                            .clicked()
+                    {
+                        if let Some(prev) = media.prompt_before_enhance.take() {
+                            media.prompt = prev;
+                        }
+                    }
+                }
+            });
+        });
+        ui.add_space(widgets::GAP_WIDGETS);
+    }
+}
+
+/// The action row: Generate, Stop and the estimate, then the status and the last error.
+fn render_generate(ui: &mut egui::Ui, media: &mut MediaState, out: &mut MediaRenderOutput) {
+    // ── Generate button + busy state ──────────────────────────
+    let inputs_ready = match media.kind {
+        // Image Edit needs an instruction + a source image.
+        MediaKind::ImageEdit => {
+            !media.prompt.trim().is_empty() && media.image_edit.source.is_some()
+        }
+        // Transcribe needs only an audio file.
+        MediaKind::Transcribe => media.transcribe.audio.is_some(),
+        MediaKind::Separate => media.separate.audio.is_some(),
+        _ => !media.prompt.trim().is_empty(),
+    };
+    let can_generate = !media.is_generating && inputs_ready;
+    ui.horizontal(|ui| {
+        let gen_btn = widgets::primary_button_icon(
+            Icon::Bolt,
+            if media.is_generating {
+                "Generating..."
+            } else {
+                "Generate"
+            },
+        )
+        .min_size(GENERATE_SIZE);
+        if ui.add_enabled(can_generate, gen_btn).clicked() {
+            out.generate_clicked = true;
+        }
+        if media.is_generating {
+            ui.add_space(widgets::GAP_WIDGETS);
+            let cancel_btn = widgets::danger_button_icon(Icon::Stop, "Stop").min_size(CANCEL_SIZE);
+            let server_can_stop = media
+                .render_id
+                .lock()
+                .map(|id| id.is_some())
+                .unwrap_or(false);
+            if ui
+                .add(cancel_btn)
+                .on_hover_text(crate::state::cancel_tooltip(server_can_stop))
+                .clicked()
+            {
+                // The identifier is handed to the caller, which owns the HTTP
+                // client: stopping a render means TELLING the server, because
+                // dropping the connection does not.
+                media.pending_cancel = media.cancel_generation();
+            }
+            ui.add_space(widgets::GAP_WIDGETS);
+            widgets::lamp_inline(ui, true, theme::accent());
+        }
+        // What this render is expected to cost, next to the button that starts it.
+        // Video is the one kind where the answer can be an hour, which is not
+        // something to discover by waiting it out.
+        //
+        // Absent until the server has answered: nothing at all beats a zero, which
+        // reads as "instant" for precisely the settings that are not.
+        if media.kind == MediaKind::Video && !media.is_generating {
+            if let Some(seconds) = media.video_estimate {
+                ui.add_space(widgets::GAP_WIDGETS);
+                ui.label(text::readout(&format!(
+                    "{} of denoising",
+                    format_estimate(seconds)
+                )))
+                .on_hover_text(
+                    "Expected time in the denoising loop for these settings. \
+                             Loading the checkpoint and decoding the frames are on top \
+                             of it, so a short clip takes noticeably longer than this \
+                             and a long one barely more.",
+                );
+            }
+        }
+    });
+    ui.add_space(widgets::GAP_WIDGETS);
+
+    render_status(ui, media);
+
+    if let Some(err) = media.error.clone() {
+        ui.add_space(widgets::GAP_LABEL);
+        widgets::panel_frame(ui, |ui| {
+            ui.horizontal(|ui| {
+                widgets::lamp_inline(ui, true, theme::error());
+                ui.label(text::note(&err).color(theme::error()));
+            });
+        });
+    }
 }
 
 /// A wait, said the way someone waiting would say it: `~45 s`, `~2.8 min`, `~1.4 h`.
@@ -385,68 +479,89 @@ fn render_params(
             let family = model_family_of(models, &media.image.model);
             let takes_loras = family_takes_loras(models, &media.image.model);
             let is_sdxl = family == "sdxl";
-            ui.columns(2, |cols| {
-                let ui = &mut cols[0];
-                widgets::section_panel(ui, "MODEL", |ui| {
-                    param_grid(ui, "media_params_image_model", |ui| {
-                        param_label(ui, "MODEL");
-                        egui::ComboBox::from_id_salt("media_image_model")
-                            .selected_text(if media.image.model.is_empty() {
-                                "(no image model)".to_string()
-                            } else {
-                                media.image.model.clone()
-                            })
-                            .show_ui(ui, |ui| {
-                                if image_models.is_empty() {
-                                    ui.label("No image-gen model available");
-                                }
-                                for name in &image_models {
-                                    ui.selectable_value(&mut media.image.model, name.to_string(), *name);
-                                }
-                            })
-                            .response
-                            .on_hover_text(
-                                "Which image model renders: each has its own style, speed and \
+            two_up(ui, |ui, side| {
+                if side == 0 {
+                    form_section(ui, "MODEL", |ui| {
+                        param_grid(ui, "media_params_image_model", |ui| {
+                            param_label(ui, "MODEL");
+                            egui::ComboBox::from_id_salt("media_image_model")
+                                .selected_text(if media.image.model.is_empty() {
+                                    "(no image model)".to_string()
+                                } else {
+                                    media.image.model.clone()
+                                })
+                                .show_ui(ui, |ui| {
+                                    if image_models.is_empty() {
+                                        ui.label("No image-gen model available");
+                                    }
+                                    for name in &image_models {
+                                        ui.selectable_value(
+                                            &mut media.image.model,
+                                            name.to_string(),
+                                            *name,
+                                        );
+                                    }
+                                })
+                                .response
+                                .on_hover_text(
+                                    "Which image model renders: each has its own style, speed and \
                                  ideal step count (turbo models need few steps, base models more).",
+                                );
+                            ui.end_row();
+                            file_format_row(ui, &mut media.image.file_format);
+                        });
+                        widgets::caption_row(
+                            ui,
+                            "Picking a model applies its own recommended steps, guidance and size.",
+                        );
+                    });
+                    ui.add_space(widgets::GAP_WIDGETS);
+                    form_section(ui, "SHAPE AND SIZE", |ui| {
+                        param_grid(ui, "media_params_image_shape", |ui| {
+                            shape_row(ui, &mut media.image.width, &mut media.image.height);
+                            size_row(
+                                ui,
+                                &mut media.image.width,
+                                &mut media.image.height,
+                                64..=2048,
                             );
-                        ui.end_row();
-                        file_format_row(ui, &mut media.image.file_format);
+                        });
+                        widgets::caption_row(ui, "The named shapes are the buckets these models were trained on; another ratio costs some composition.");
                     });
-                    widgets::caption_row(ui, "Picking a model applies its own recommended steps, guidance and size.");
-                });
-                ui.add_space(widgets::GAP_WIDGETS);
-                widgets::section_panel(ui, "SHAPE AND SIZE", |ui| {
-                    param_grid(ui, "media_params_image_shape", |ui| {
-                        shape_row(ui, &mut media.image.width, &mut media.image.height);
-                        size_row(ui, &mut media.image.width, &mut media.image.height, 64..=2048);
-                    });
-                    widgets::caption_row(ui, "The named shapes are the buckets these models were trained on; another ratio costs some composition.");
-                });
-                ui.add_space(widgets::GAP_WIDGETS);
-                widgets::section_panel(ui, "SAMPLING", |ui| {
-                    param_grid(ui, "media_params_image_sampling", |ui| {
-                        slider_row(ui, "STEPS", &mut media.image.steps, 1..=200, SliderOpts::default(),
+                    ui.add_space(widgets::GAP_WIDGETS);
+                    form_section(ui, "SAMPLING", |ui| {
+                        param_grid(ui, "media_params_image_sampling", |ui| {
+                            slider_row(ui, "STEPS", &mut media.image.steps, 1..=200, SliderOpts::default(),
                             "Denoising iterations: more is finer detail up to the model's sweet \
                              spot, with time growing linearly.");
-                        slider_row(ui, "COUNT", &mut media.image.n, 1..=8, SliderOpts::default(),
-                            "Number of variations rendered in one run (seed+1 each).");
-                        // The solver is selectable for the SDXL family only.
-                        if is_sdxl {
-                            solver_rows(ui, &mut media.image.sampler, &mut media.image.scheduler);
-                        }
+                            slider_row(
+                                ui,
+                                "COUNT",
+                                &mut media.image.n,
+                                1..=8,
+                                SliderOpts::default(),
+                                "Number of variations rendered in one run (seed+1 each).",
+                            );
+                            // The solver is selectable for the SDXL family only.
+                            if is_sdxl {
+                                solver_rows(
+                                    ui,
+                                    &mut media.image.sampler,
+                                    &mut media.image.scheduler,
+                                );
+                            }
+                        });
+                        widgets::caption_row(ui, "Turbo and distilled models are built for 4-9 steps; base models like 20-50.");
                     });
-                    widgets::caption_row(ui, "Turbo and distilled models are built for 4-9 steps; base models like 20-50.");
-                });
-
-                let ui = &mut cols[1];
-                widgets::section_panel(ui, "GUIDANCE", |ui| {
-                    param_grid(ui, "media_params_image_guidance", |ui| {
-                        slider_row(ui, "GUIDANCE", &mut media.image.guidance, 0.0..=30.0, SliderOpts { decimals: 2, ..Default::default() },
+                } else {
+                    form_section(ui, "GUIDANCE", |ui| {
+                        param_grid(ui, "media_params_image_guidance", |ui| {
+                            slider_row(ui, "GUIDANCE", &mut media.image.guidance, 0.0..=30.0, SliderOpts { decimals: 2, ..Default::default() },
                             "Prompt adherence (CFG): higher follows the text more literally but \
                              can over-saturate and distort; lower is freer. 0 is the model's own \
                              recommended value.");
-                        param_label(ui, "NEGATIVE");
-                        ui.add(
+                            param_label(ui, "NEGATIVE");
+                            ui.add(
                             egui::TextEdit::multiline(&mut media.image.negative_prompt)
                                 .desired_rows(2)
                                 .desired_width(f32::INFINITY)
@@ -456,21 +571,24 @@ fn render_params(
                             "What the render should steer away from: a watermark, a warped hand. \
                              Empty keeps the model family's own default.",
                         );
-                        ui.end_row();
+                            ui.end_row();
+                        });
+                        widgets::caption_row(
+                            ui,
+                            "The negative prompt removes what a prompt cannot name.",
+                        );
                     });
-                    widgets::caption_row(ui, "The negative prompt removes what a prompt cannot name.");
-                });
-                // Adapters and pose are honoured by some families only; a knob the
-                // model ignores is not shown.
-                if takes_loras || is_sdxl {
-                    ui.add_space(widgets::GAP_WIDGETS);
-                    widgets::section_panel(ui, "ADAPTERS", |ui| {
-                        param_grid(ui, "media_params_image_adapters", |ui| {
-                            if takes_loras {
-                                lora_rows(ui, &mut media.image.loras, loras, &family);
-                            }
-                            if is_sdxl {
-                                audio_picker_row(
+                    // Adapters and pose are honoured by some families only; a knob the
+                    // model ignores is not shown.
+                    if takes_loras || is_sdxl {
+                        ui.add_space(widgets::GAP_WIDGETS);
+                        form_section(ui, "ADAPTERS", |ui| {
+                            param_grid(ui, "media_params_image_adapters", |ui| {
+                                if takes_loras {
+                                    lora_rows(ui, &mut media.image.loras, loras, &family);
+                                }
+                                if is_sdxl {
+                                    audio_picker_row(
                                     ui,
                                     media,
                                     "POSE",
@@ -479,30 +597,45 @@ fn render_params(
                                      which a prompt cannot. At strength 0 the render is what it \
                                      would have been without one.",
                                 );
-                                if media.image.control.is_some() {
-                                    slider_row(ui, "POSE STRENGTH", &mut media.image.control_scale, 0.0..=2.0,
-                                        SliderOpts { decimals: 2, ..Default::default() },
-                                        "How hard the pose image constrains the composition.");
+                                    if media.image.control.is_some() {
+                                        slider_row(
+                                            ui,
+                                            "POSE STRENGTH",
+                                            &mut media.image.control_scale,
+                                            0.0..=2.0,
+                                            SliderOpts {
+                                                decimals: 2,
+                                                ..Default::default()
+                                            },
+                                            "How hard the pose image constrains the composition.",
+                                        );
+                                    }
                                 }
-                            }
+                            });
+                            widgets::caption_row(
+                                ui,
+                                "Only the adapters this model's architecture can take are offered.",
+                            );
                         });
-                        widgets::caption_row(ui, "Only the adapters this model's architecture can take are offered.");
+                    }
+                    ui.add_space(widgets::GAP_WIDGETS);
+                    form_section(ui, "REGIONS", |ui| {
+                        param_grid(ui, "media_params_image_regions", |ui| {
+                            region_rows(ui, &mut media.image.regions);
+                        });
+                        widgets::caption_row(ui, "A prompt naming two subjects renders them merged; give each an area and they stay apart.");
+                    });
+                    ui.add_space(widgets::GAP_WIDGETS);
+                    form_section(ui, "SEED", |ui| {
+                        param_grid(ui, "media_params_image_seed", |ui| {
+                            seed_row(ui, media);
+                        });
+                        widgets::caption_row(
+                            ui,
+                            "Same seed and settings, same result. Empty is a fresh seed each run.",
+                        );
                     });
                 }
-                ui.add_space(widgets::GAP_WIDGETS);
-                widgets::section_panel(ui, "REGIONS", |ui| {
-                    param_grid(ui, "media_params_image_regions", |ui| {
-                        region_rows(ui, &mut media.image.regions);
-                    });
-                    widgets::caption_row(ui, "A prompt naming two subjects renders them merged; give each an area and they stay apart.");
-                });
-                ui.add_space(widgets::GAP_WIDGETS);
-                widgets::section_panel(ui, "SEED", |ui| {
-                    param_grid(ui, "media_params_image_seed", |ui| {
-                        seed_row(ui, media);
-                    });
-                    widgets::caption_row(ui, "Same seed and settings, same result. Empty is a fresh seed each run.");
-                });
             });
         }
         MediaKind::Music => {
@@ -522,17 +655,17 @@ fn render_params(
                 ("xl-sft", 4.5),
                 ("xl-base", 4.5),
             ];
-            ui.columns(2, |cols| {
-                let ui = &mut cols[0];
-                widgets::section_panel(ui, "COMPOSITION", |ui| {
-                    param_grid(ui, "media_params_music_composition", |ui| {
-                        param_label(ui, "MODEL");
-                        let current_label = DIT_MODELS
-                            .iter()
-                            .find(|(id, _, _)| *id == media.music.dit_model)
-                            .map(|(_, l, _)| *l)
-                            .unwrap_or("Turbo (fast, 8-step)");
-                        egui::ComboBox::from_id_salt("media_music_dit")
+            two_up(ui, |ui, side| {
+                if side == 0 {
+                    form_section(ui, "COMPOSITION", |ui| {
+                        param_grid(ui, "media_params_music_composition", |ui| {
+                            param_label(ui, "MODEL");
+                            let current_label = DIT_MODELS
+                                .iter()
+                                .find(|(id, _, _)| *id == media.music.dit_model)
+                                .map(|(_, l, _)| *l)
+                                .unwrap_or("Turbo (fast, 8-step)");
+                            egui::ComboBox::from_id_salt("media_music_dit")
                             .selected_text(current_label)
                             .show_ui(ui, |ui| {
                                 for (id, label, rec_steps) in DIT_MODELS {
@@ -555,13 +688,13 @@ fn render_params(
                                  SFT/Base follow prompts and lyrics better but want ~50 steps; XL \
                                  variants (4B) are richer and slower.",
                             );
-                        ui.end_row();
-                        slider_row(ui, "DURATION", &mut media.music.seconds, 2.0..=600.0,
+                            ui.end_row();
+                            slider_row(ui, "DURATION", &mut media.music.seconds, 2.0..=600.0,
                             SliderOpts { suffix: " s", logarithmic: true, decimals: 0 },
                             "Track length, up to 10 minutes. Render time grows with it; without \
                              Full length the model may end the song earlier.");
-                        param_label(ui, "LOOP");
-                        ui.horizontal(|ui| {
+                            param_label(ui, "LOOP");
+                            ui.horizontal(|ui| {
                             ui.checkbox(&mut media.music.loop_mode, "seamless loop");
                             if media.music.loop_mode {
                                 widgets::drag_fixed(ui, egui::DragValue::new(&mut media.music.loop_bars).range(1..=64).suffix(" bars"), widgets::READOUT_WIDE_W);
@@ -569,45 +702,61 @@ fn render_params(
                         })
                         .response
                         .on_hover_text("Bar-exact length from bars x bpm, tail crossfaded into the head: drops into a DAW and loops without a click.");
-                        ui.end_row();
-                        param_label(ui, "FULL LENGTH");
-                        ui.checkbox(&mut media.music.force_duration, "force the whole duration")
+                            ui.end_row();
+                            param_label(ui, "FULL LENGTH");
+                            ui.checkbox(&mut media.music.force_duration, "force the whole duration")
                             .on_hover_text("Ban the model's natural end-of-song until the requested length is reached.");
-                        ui.end_row();
-                        slider_row(ui, "TEMPO", &mut media.music.bpm, 40..=220, SliderOpts { suffix: " bpm", ..Default::default() },
-                            "Beats per minute; also the bar grid for loops.");
+                            ui.end_row();
+                            slider_row(
+                                ui,
+                                "TEMPO",
+                                &mut media.music.bpm,
+                                40..=220,
+                                SliderOpts {
+                                    suffix: " bpm",
+                                    ..Default::default()
+                                },
+                                "Beats per minute; also the bar grid for loops.",
+                            );
+                        });
+                        widgets::caption_row(
+                            ui,
+                            "Picking a checkpoint sets its recommended steps and CFG.",
+                        );
                     });
-                    widgets::caption_row(ui, "Picking a checkpoint sets its recommended steps and CFG.");
-                });
-                ui.add_space(widgets::GAP_WIDGETS);
-                widgets::section_panel(ui, "RENDERING", |ui| {
-                    param_grid(ui, "media_params_music_rendering", |ui| {
-                        slider_row(ui, "STEPS", &mut media.music.steps, 1..=200, SliderOpts::default(),
+                    ui.add_space(widgets::GAP_WIDGETS);
+                    form_section(ui, "RENDERING", |ui| {
+                        param_grid(ui, "media_params_music_rendering", |ui| {
+                            slider_row(ui, "STEPS", &mut media.music.steps, 1..=200, SliderOpts::default(),
                             "Diffusion steps for the audio detail pass. Turbo: ~8-27; SFT/Base: ~50.");
-                        slider_row(ui, "CFG", &mut media.music.cfg, 1.0..=10.0, SliderOpts { decimals: 1, ..Default::default() },
+                            slider_row(ui, "CFG", &mut media.music.cfg, 1.0..=10.0, SliderOpts { decimals: 1, ..Default::default() },
                             "Caption and lyrics adherence. Turbo is CFG-free (keep 1.0); SFT/Base \
                              follow the prompt better around 4-7, at two evaluations per step.");
-                        slider_row(ui, "TEMPERATURE", &mut media.music.temperature, 0.1..=1.5, SliderOpts { decimals: 2, ..Default::default() },
+                            slider_row(ui, "TEMPERATURE", &mut media.music.temperature, 0.1..=1.5, SliderOpts { decimals: 2, ..Default::default() },
                             "Composition randomness: low is safe and repetitive, high is adventurous.");
-                        slider_row(ui, "TOP-P", &mut media.music.top_p, 0.1..=1.0, SliderOpts { decimals: 2, ..Default::default() },
+                            slider_row(ui, "TOP-P", &mut media.music.top_p, 0.1..=1.0, SliderOpts { decimals: 2, ..Default::default() },
                             "Nucleus cutoff on the composer: lower keeps only the likeliest continuations.");
+                        });
+                        widgets::caption_row(
+                            ui,
+                            "Turbo wants CFG 1.0; SFT and Base follow the prompt around 4-7.",
+                        );
                     });
-                    widgets::caption_row(ui, "Turbo wants CFG 1.0; SFT and Base follow the prompt around 4-7.");
-                });
-
-                let ui = &mut cols[1];
-                widgets::section_panel(ui, "CONDITIONING", |ui| {
-                    param_grid(ui, "media_params_music_conditioning", |ui| {
-                        param_label(ui, "KEY / SCALE");
-                        ui.text_edit_singleline(&mut media.music.keyscale)
+                } else {
+                    form_section(ui, "CONDITIONING", |ui| {
+                        param_grid(ui, "media_params_music_conditioning", |ui| {
+                            param_label(ui, "KEY / SCALE");
+                            ui.text_edit_singleline(&mut media.music.keyscale)
                             .on_hover_text("Tonality constraint, e.g. C minor, A major. Empty is the model's choice.");
-                        ui.end_row();
-                        param_label(ui, "LANGUAGE");
-                        ui.text_edit_singleline(&mut media.music.language)
-                            .on_hover_text("Lyrics language code (en, fr, ...); guides pronunciation.");
-                        ui.end_row();
-                        param_label(ui, "LYRICS");
-                        ui.add(
+                            ui.end_row();
+                            param_label(ui, "LANGUAGE");
+                            ui.text_edit_singleline(&mut media.music.language)
+                                .on_hover_text(
+                                    "Lyrics language code (en, fr, ...); guides pronunciation.",
+                                );
+                            ui.end_row();
+                            param_label(ui, "LYRICS");
+                            ui.add(
                             egui::TextEdit::multiline(&mut media.music.lyrics)
                                 .desired_rows(4)
                                 .desired_width(f32::INFINITY)
@@ -617,26 +766,32 @@ fn render_params(
                             "Sung text. [verse], [chorus] and [bridge] tags shape the arrangement; \
                              with lyrics present the server adds a sung-vocals directive.",
                         );
-                        ui.end_row();
-                        param_label(ui, "NEGATIVE");
-                        ui.add(
-                            egui::TextEdit::multiline(&mut media.music.negative_prompt)
-                                .desired_rows(2)
-                                .desired_width(f32::INFINITY)
-                                .hint_text("spoken word, talking, monotone..."),
-                        )
-                        .on_hover_text("What the music should avoid. Effective when CFG is above 1.");
-                        ui.end_row();
+                            ui.end_row();
+                            param_label(ui, "NEGATIVE");
+                            ui.add(
+                                egui::TextEdit::multiline(&mut media.music.negative_prompt)
+                                    .desired_rows(2)
+                                    .desired_width(f32::INFINITY)
+                                    .hint_text("spoken word, talking, monotone..."),
+                            )
+                            .on_hover_text(
+                                "What the music should avoid. Effective when CFG is above 1.",
+                            );
+                            ui.end_row();
+                        });
+                        widgets::caption_row(ui, "Lyrics tags shape the arrangement; the negative prompt needs CFG above 1.");
                     });
-                    widgets::caption_row(ui, "Lyrics tags shape the arrangement; the negative prompt needs CFG above 1.");
-                });
-                ui.add_space(widgets::GAP_WIDGETS);
-                widgets::section_panel(ui, "SEED", |ui| {
-                    param_grid(ui, "media_params_music_seed", |ui| {
-                        seed_row(ui, media);
+                    ui.add_space(widgets::GAP_WIDGETS);
+                    form_section(ui, "SEED", |ui| {
+                        param_grid(ui, "media_params_music_seed", |ui| {
+                            seed_row(ui, media);
+                        });
+                        widgets::caption_row(
+                            ui,
+                            "Same seed and settings, same result. Empty is a fresh seed each run.",
+                        );
                     });
-                    widgets::caption_row(ui, "Same seed and settings, same result. Empty is a fresh seed each run.");
-                });
+                }
             });
         }
         MediaKind::Sfx => {
@@ -656,7 +811,7 @@ fn render_params(
             let max_secs = sel
                 .and_then(|m| m.default_f64("max_seconds"))
                 .unwrap_or(30.0) as f32;
-            widgets::section_panel(ui, "MODEL", |ui| {
+            form_section(ui, "MODEL", |ui| {
                 param_grid(ui, "media_params_sfx_model", |ui| {
                     param_label(ui, "MODEL");
                     egui::ComboBox::from_id_salt("sfx_model")
@@ -691,7 +846,7 @@ fn render_params(
                 );
             });
             ui.add_space(widgets::GAP_WIDGETS);
-            widgets::section_panel(ui, "RENDERING", |ui| {
+            form_section(ui, "RENDERING", |ui| {
                 param_grid(ui, "media_params_sfx_rendering", |ui| {
                     slider_row(
                         ui,
@@ -737,7 +892,7 @@ fn render_params(
                 );
             });
             ui.add_space(widgets::GAP_WIDGETS);
-            widgets::section_panel(ui, "GUIDANCE", |ui| {
+            form_section(ui, "GUIDANCE", |ui| {
                 param_grid(ui, "media_params_sfx_guidance", |ui| {
                     slider_row(ui, "CFG", &mut media.sfx.cfg, 0.5..=12.0, SliderOpts { decimals: 1, ..Default::default() },
                         "Prompt adherence: higher follows the description more literally but can distort; ~3 for EzAudio, ~7 for Stable Audio.");
@@ -759,7 +914,7 @@ fn render_params(
             });
             if has_variations {
                 ui.add_space(widgets::GAP_WIDGETS);
-                widgets::section_panel(ui, "VARIATION", |ui| {
+                form_section(ui, "VARIATION", |ui| {
                     param_grid(ui, "media_params_sfx_variation", |ui| {
                         audio_picker_row(ui, media, "VARIATION OF", MediaAudioSlot::SfxInit,
                             "Optional source clip (WAV): the render becomes an audio-to-audio variation of it instead of starting from noise.");
@@ -773,7 +928,7 @@ fn render_params(
                 });
             }
             ui.add_space(widgets::GAP_WIDGETS);
-            widgets::section_panel(ui, "SEED", |ui| {
+            form_section(ui, "SEED", |ui| {
                 param_grid(ui, "media_params_sfx_seed", |ui| {
                     seed_row(ui, media);
                 });
@@ -784,7 +939,7 @@ fn render_params(
             });
         }
         MediaKind::Midi => {
-            widgets::section_panel(ui, "SAMPLING", |ui| {
+            form_section(ui, "SAMPLING", |ui| {
                 param_grid(ui, "media_params_midi", |ui| {
                     slider_row(ui, "MAX TOKENS", &mut media.midi.max_tokens, 64..=8192, SliderOpts::default(),
                         "Length budget for the score: more tokens is more notes and bars. The model may end earlier.");
@@ -817,7 +972,7 @@ fn render_params(
                 );
             });
             ui.add_space(widgets::GAP_WIDGETS);
-            widgets::section_panel(ui, "SEED", |ui| {
+            form_section(ui, "SEED", |ui| {
                 param_grid(ui, "media_params_midi_seed", |ui| {
                     seed_row(ui, media);
                 });
@@ -838,12 +993,12 @@ fn render_params(
             if !video_models.is_empty() && !video_models.contains(&media.video.model.as_str()) {
                 media.video.model = video_models[0].to_string();
             }
-            ui.columns(2, |cols| {
-                let ui = &mut cols[0];
-                widgets::section_panel(ui, "MODEL", |ui| {
-                    param_grid(ui, "media_params_video_model", |ui| {
-                        param_label(ui, "MODEL");
-                        egui::ComboBox::from_id_salt("media_video_model")
+            two_up(ui, |ui, side| {
+                if side == 0 {
+                    form_section(ui, "MODEL", |ui| {
+                        param_grid(ui, "media_params_video_model", |ui| {
+                            param_label(ui, "MODEL");
+                            egui::ComboBox::from_id_salt("media_video_model")
                             .selected_text(media.video.model.clone())
                             .show_ui(ui, |ui| {
                                 for name in &video_models {
@@ -852,36 +1007,41 @@ fn render_params(
                             })
                             .response
                             .on_hover_text("The video checkpoint. A name containing 14 is the 14B, slower and better.");
-                        ui.end_row();
+                            ui.end_row();
+                        });
+                        widgets::caption_row(ui, "A fine-tune dropped in the server's video directory shows up here on its own.");
                     });
-                    widgets::caption_row(ui, "A fine-tune dropped in the server's video directory shows up here on its own.");
-                });
-                ui.add_space(widgets::GAP_WIDGETS);
-                widgets::section_panel(ui, "SHAPE AND SIZE", |ui| {
-                    param_grid(ui, "media_params_video_shape", |ui| {
-                        slider_row(ui, "DURATION", &mut media.video.seconds, 0.5..=300.0, SliderOpts { suffix: " s", decimals: 1, ..Default::default() },
+                    ui.add_space(widgets::GAP_WIDGETS);
+                    form_section(ui, "SHAPE AND SIZE", |ui| {
+                        param_grid(ui, "media_params_video_shape", |ui| {
+                            slider_row(ui, "DURATION", &mut media.video.seconds, 0.5..=300.0, SliderOpts { suffix: " s", decimals: 1, ..Default::default() },
                             "Length of each scene. The temporal VAE compresses time by four, so a \
                              duration becomes a frame count rounded up. Past the 5 s the model was \
                              trained on it is denoised over overlapping windows, so the cost grows \
                              with the duration rather than its square.");
-                        size_row(ui, &mut media.video.width, &mut media.video.height, 128..=1280);
-                    });
-                    let f = crate::state::frames_for_seconds(media.video.seconds);
-                    widgets::caption_row(ui, &format!(
+                            size_row(
+                                ui,
+                                &mut media.video.width,
+                                &mut media.video.height,
+                                128..=1280,
+                            );
+                        });
+                        let f = crate::state::frames_for_seconds(media.video.seconds);
+                        widgets::caption_row(ui, &format!(
                         "{f} frames ({:.2} s at 16 fps). A minute costs about twice what thirty seconds does.",
                         crate::state::seconds_for_frames(f)
                     ));
-                });
-                ui.add_space(widgets::GAP_WIDGETS);
-                widgets::section_panel(ui, "SAMPLING", |ui| {
-                    param_grid(ui, "media_params_video_sampling", |ui| {
-                        slider_row(ui, "STEPS", &mut media.video.steps, 1..=60, SliderOpts::default(),
+                    });
+                    ui.add_space(widgets::GAP_WIDGETS);
+                    form_section(ui, "SAMPLING", |ui| {
+                        param_grid(ui, "media_params_video_sampling", |ui| {
+                            slider_row(ui, "STEPS", &mut media.video.steps, 1..=60, SliderOpts::default(),
                             "Denoising iterations per scene; time grows linearly. ~20 is balanced.");
-                        slider_row(ui, "CFG", &mut media.video.cfg, 0.0..=15.0, SliderOpts { decimals: 1, ..Default::default() },
+                            slider_row(ui, "CFG", &mut media.video.cfg, 0.0..=15.0, SliderOpts { decimals: 1, ..Default::default() },
                             "Prompt adherence: higher is more literal but risks burn-out (all-white \
                              frames at high values on small sizes). 0 is the server's measured default.");
-                        param_label(ui, "SAMPLER");
-                        ui.horizontal(|ui| {
+                            param_label(ui, "SAMPLER");
+                            ui.horizontal(|ui| {
                             for smp in [VideoSampler::Auto, VideoSampler::UniPc, VideoSampler::Heun] {
                                 if widgets::selector_pill(ui, smp.label(), media.video.sampler == smp).clicked() {
                                     media.video.sampler = smp;
@@ -890,40 +1050,42 @@ fn render_params(
                         })
                         .response
                         .on_hover_text("Integration method. Auto picks the measured best per resolution (UniPC at native scale, Heun below).");
-                        ui.end_row();
+                            ui.end_row();
+                        });
+                        widgets::caption_row(ui, "Auto picks the measured best sampler per resolution; change it only if a render shows artifacts.");
                     });
-                    widgets::caption_row(ui, "Auto picks the measured best sampler per resolution; change it only if a render shows artifacts.");
-                });
-
-                let ui = &mut cols[1];
-                widgets::section_panel(ui, "START FRAME", |ui| {
-                    param_grid(ui, "media_params_video_start", |ui| {
-                        audio_picker_row(ui, media, "START FRAME", MediaAudioSlot::VideoStartImage,
+                } else {
+                    form_section(ui, "START FRAME", |ui| {
+                        param_grid(ui, "media_params_video_start", |ui| {
+                            audio_picker_row(ui, media, "START FRAME", MediaAudioSlot::VideoStartImage,
                             "The picture the clip starts from, for a model whose name carries i2v. \
                              A text-to-video model ignores it; an image-to-video one refuses to render without it.");
+                        });
+                        widgets::caption_row(ui, "An i2v model continues a frame rather than inventing one; a t2v model ignores this.");
                     });
-                    widgets::caption_row(ui, "An i2v model continues a frame rather than inventing one; a t2v model ignores this.");
-                });
-                ui.add_space(widgets::GAP_WIDGETS);
-                widgets::section_panel(ui, "GUIDANCE", |ui| {
-                    param_grid(ui, "media_params_video_guidance", |ui| {
-                        param_label(ui, "NEGATIVE");
-                        ui.add(
+                    ui.add_space(widgets::GAP_WIDGETS);
+                    form_section(ui, "GUIDANCE", |ui| {
+                        param_grid(ui, "media_params_video_guidance", |ui| {
+                            param_label(ui, "NEGATIVE");
+                            ui.add(
                             egui::TextEdit::multiline(&mut media.video.negative_prompt)
                                 .desired_rows(2)
                                 .desired_width(f32::INFINITY)
                                 .hint_text("blurry, distorted, flickering..."),
                         )
                         .on_hover_text("What the motion should steer away from. Empty leaves the plain unconditional branch.");
-                        ui.end_row();
+                            ui.end_row();
+                        });
+                        widgets::caption_row(
+                            ui,
+                            "Empty leaves the unconditional branch the model was trained against.",
+                        );
                     });
-                    widgets::caption_row(ui, "Empty leaves the unconditional branch the model was trained against.");
-                });
-                ui.add_space(widgets::GAP_WIDGETS);
-                widgets::section_panel(ui, "OUTPUT", |ui| {
-                    param_grid(ui, "media_params_video_output", |ui| {
-                        param_label(ui, "FORMAT");
-                        ui.horizontal(|ui| {
+                    ui.add_space(widgets::GAP_WIDGETS);
+                    form_section(ui, "OUTPUT", |ui| {
+                        param_grid(ui, "media_params_video_output", |ui| {
+                            param_label(ui, "FORMAT");
+                            ui.horizontal(|ui| {
                             for (fmt, label) in [(VideoFormat::Mp4, "MP4"), (VideoFormat::Gif, "GIF")] {
                                 if widgets::selector_pill(ui, label, media.video.format == fmt).clicked() {
                                     media.video.format = fmt;
@@ -932,22 +1094,26 @@ fn render_params(
                         })
                         .response
                         .on_hover_text("MP4 is true colour and ~10x smaller; GIF is universal but 256 colours.");
-                        ui.end_row();
+                            ui.end_row();
+                        });
+                        widgets::caption_row(ui, "MP4 is true colour and ten times smaller; GIF is universal but 256 colours.");
                     });
-                    widgets::caption_row(ui, "MP4 is true colour and ten times smaller; GIF is universal but 256 colours.");
-                });
-                ui.add_space(widgets::GAP_WIDGETS);
-                widgets::section_panel(ui, "SEED", |ui| {
-                    param_grid(ui, "media_params_video_seed", |ui| {
-                        seed_row(ui, media);
+                    ui.add_space(widgets::GAP_WIDGETS);
+                    form_section(ui, "SEED", |ui| {
+                        param_grid(ui, "media_params_video_seed", |ui| {
+                            seed_row(ui, media);
+                        });
+                        widgets::caption_row(
+                            ui,
+                            "Same seed and settings, same result. Empty is a fresh seed each run.",
+                        );
                     });
-                    widgets::caption_row(ui, "Same seed and settings, same result. Empty is a fresh seed each run.");
-                });
+                }
             });
         }
         MediaKind::Speech => {
             use crate::state::SpeechEngine;
-            widgets::section_panel(ui, "ENGINE", |ui| {
+            form_section(ui, "ENGINE", |ui| {
                 param_grid(ui, "media_params_speech", |ui| {
                     param_label(ui, "ENGINE");
                     egui::ComboBox::from_id_salt("media_speech_engine")
@@ -1037,12 +1203,12 @@ fn render_params(
                 .unwrap_or(false);
             let family = model_family_of(models, &media.image_edit.model);
             let takes_loras = family_takes_loras(models, &media.image_edit.model);
-            ui.columns(2, |cols| {
-                let ui = &mut cols[0];
-                widgets::section_panel(ui, "MODEL", |ui| {
-                    param_grid(ui, "media_params_edit_model", |ui| {
-                        param_label(ui, "MODEL");
-                        egui::ComboBox::from_id_salt("media_edit_model")
+            two_up(ui, |ui, side| {
+                if side == 0 {
+                    form_section(ui, "MODEL", |ui| {
+                        param_grid(ui, "media_params_edit_model", |ui| {
+                            param_label(ui, "MODEL");
+                            egui::ComboBox::from_id_salt("media_edit_model")
                             .selected_text(media.image_edit.model.clone())
                             .show_ui(ui, |ui| {
                                 if editors.is_empty() {
@@ -1071,67 +1237,88 @@ fn render_params(
                             } else {
                                 "img2img: re-imagines the source guided by the prompt; Strength sets how far it may drift."
                             });
-                        ui.end_row();
+                            ui.end_row();
+                        });
+                        widgets::caption_row(ui, "Picking a model applies its recommended steps and guidance; too few steps is why an instruction comes back barely applied.");
                     });
-                    widgets::caption_row(ui, "Picking a model applies its recommended steps and guidance; too few steps is why an instruction comes back barely applied.");
-                });
-                ui.add_space(widgets::GAP_WIDGETS);
-                widgets::section_panel(ui, "SOURCE", |ui| {
-                    param_grid(ui, "media_params_edit_source", |ui| {
-                        audio_picker_row(ui, media, "SOURCE IMAGE", MediaAudioSlot::EditImage, "Pick the image to edit (png/jpg/webp)");
+                    ui.add_space(widgets::GAP_WIDGETS);
+                    form_section(ui, "SOURCE", |ui| {
+                        param_grid(ui, "media_params_edit_source", |ui| {
+                            audio_picker_row(
+                                ui,
+                                media,
+                                "SOURCE IMAGE",
+                                MediaAudioSlot::EditImage,
+                                "Pick the image to edit (png/jpg/webp)",
+                            );
+                        });
+                        widgets::caption_row(ui, "The picture the instruction applies to.");
                     });
-                    widgets::caption_row(ui, "The picture the instruction applies to.");
-                });
-                ui.add_space(widgets::GAP_WIDGETS);
-                widgets::section_panel(ui, "SAMPLING", |ui| {
-                    param_grid(ui, "media_params_edit_sampling", |ui| {
-                        slider_row(ui, "STRENGTH", &mut media.image_edit.strength, 0.0..=1.0, SliderOpts { decimals: 2, ..Default::default() },
+                    ui.add_space(widgets::GAP_WIDGETS);
+                    form_section(ui, "SAMPLING", |ui| {
+                        param_grid(ui, "media_params_edit_sampling", |ui| {
+                            slider_row(ui, "STRENGTH", &mut media.image_edit.strength, 0.0..=1.0, SliderOpts { decimals: 2, ..Default::default() },
                             "How far the edit may drift from the source: low keeps composition and details, 1 is a full re-generation.");
-                        slider_row(ui, "STEPS", &mut media.image_edit.steps, 0..=100, SliderOpts::default(),
+                            slider_row(ui, "STEPS", &mut media.image_edit.steps, 0..=100, SliderOpts::default(),
                             "Denoising iterations: more is finer detail, linearly slower. 0 is the model's recommended count.");
-                        slider_row(ui, "GUIDANCE", &mut media.image_edit.guidance, 0.0..=30.0, SliderOpts { decimals: 2, ..Default::default() },
+                            slider_row(ui, "GUIDANCE", &mut media.image_edit.guidance, 0.0..=30.0, SliderOpts { decimals: 2, ..Default::default() },
                             "Instruction adherence (CFG): higher applies the edit more forcefully but can distort; 0 is the model's default.");
-                        slider_row(ui, "COUNT", &mut media.image_edit.n, 1..=4, SliderOpts::default(),
-                            "Number of edit variations rendered in one run.");
+                            slider_row(
+                                ui,
+                                "COUNT",
+                                &mut media.image_edit.n,
+                                1..=4,
+                                SliderOpts::default(),
+                                "Number of edit variations rendered in one run.",
+                            );
+                        });
+                        widgets::caption_row(ui, "Strength 0 keeps the source, 1 re-generates it.");
                     });
-                    widgets::caption_row(ui, "Strength 0 keeps the source, 1 re-generates it.");
-                });
-
-                let ui = &mut cols[1];
-                widgets::section_panel(ui, "GUIDANCE", |ui| {
-                    param_grid(ui, "media_params_edit_guidance", |ui| {
-                        param_label(ui, "NEGATIVE");
-                        ui.add(
+                } else {
+                    form_section(ui, "GUIDANCE", |ui| {
+                        param_grid(ui, "media_params_edit_guidance", |ui| {
+                            param_label(ui, "NEGATIVE");
+                            ui.add(
                             egui::TextEdit::multiline(&mut media.image_edit.negative_prompt)
                                 .desired_rows(2)
                                 .desired_width(f32::INFINITY)
                                 .hint_text("watermark, extra fingers, blurry..."),
                         )
                         .on_hover_text("What the edit should steer away from: the artefacts an instruction cannot name.");
-                        ui.end_row();
-                    });
-                    widgets::caption_row(ui, "The negative prompt removes what an instruction cannot name.");
-                });
-                if takes_loras {
-                    ui.add_space(widgets::GAP_WIDGETS);
-                    widgets::section_panel(ui, "ADAPTERS", |ui| {
-                        param_grid(ui, "media_params_edit_adapters", |ui| {
-                            lora_rows(ui, &mut media.image_edit.loras, loras, &family);
+                            ui.end_row();
                         });
-                        widgets::caption_row(ui, "Only the adapters this model's architecture can take are offered.");
+                        widgets::caption_row(
+                            ui,
+                            "The negative prompt removes what an instruction cannot name.",
+                        );
+                    });
+                    if takes_loras {
+                        ui.add_space(widgets::GAP_WIDGETS);
+                        form_section(ui, "ADAPTERS", |ui| {
+                            param_grid(ui, "media_params_edit_adapters", |ui| {
+                                lora_rows(ui, &mut media.image_edit.loras, loras, &family);
+                            });
+                            widgets::caption_row(
+                                ui,
+                                "Only the adapters this model's architecture can take are offered.",
+                            );
+                        });
+                    }
+                    ui.add_space(widgets::GAP_WIDGETS);
+                    form_section(ui, "SEED", |ui| {
+                        param_grid(ui, "media_params_edit_seed", |ui| {
+                            seed_row(ui, media);
+                        });
+                        widgets::caption_row(
+                            ui,
+                            "Same seed and settings, same result. Empty is a fresh seed each run.",
+                        );
                     });
                 }
-                ui.add_space(widgets::GAP_WIDGETS);
-                widgets::section_panel(ui, "SEED", |ui| {
-                    param_grid(ui, "media_params_edit_seed", |ui| {
-                        seed_row(ui, media);
-                    });
-                    widgets::caption_row(ui, "Same seed and settings, same result. Empty is a fresh seed each run.");
-                });
             });
         }
         MediaKind::Transcribe => {
-            widgets::section_panel(ui, "INPUT", |ui| {
+            form_section(ui, "INPUT", |ui| {
                 param_grid(ui, "media_params_transcribe_input", |ui| {
                     audio_picker_row(
                         ui,
@@ -1144,7 +1331,7 @@ fn render_params(
                 widgets::caption_row(ui, "Any common format; the server converts it.");
             });
             ui.add_space(widgets::GAP_WIDGETS);
-            widgets::section_panel(ui, "RECOGNITION", |ui| {
+            form_section(ui, "RECOGNITION", |ui| {
                 param_grid(ui, "media_params_transcribe", |ui| {
                     param_label(ui, "MODEL");
                     ui.text_edit_singleline(&mut media.transcribe.model)
@@ -1184,7 +1371,7 @@ fn render_params(
             });
         }
         MediaKind::Separate => {
-            widgets::section_panel(ui, "INPUT", |ui| {
+            form_section(ui, "INPUT", |ui| {
                 param_grid(ui, "media_params_separate_input", |ui| {
                     audio_picker_row(
                         ui,
@@ -1200,7 +1387,7 @@ fn render_params(
                 );
             });
             ui.add_space(widgets::GAP_WIDGETS);
-            widgets::section_panel(ui, "STEMS", |ui| {
+            form_section(ui, "STEMS", |ui| {
                 param_grid(ui, "media_params_separate", |ui| {
                     param_label(ui, "STEMS");
                     egui::ComboBox::from_id_salt("media_separate_stems")
@@ -1227,17 +1414,42 @@ fn render_params(
 }
 
 /// The grid of a section: a label column of fixed width and the controls.
-fn param_grid(ui: &mut egui::Ui, id: &str, add: impl FnOnce(&mut egui::Ui)) {
-    egui::Grid::new(id)
-        .num_columns(2)
-        .min_col_width(widgets::PARAM_LABEL_W)
-        .spacing([widgets::GAP_WIDGETS, widgets::GAP_LABEL])
-        .show(ui, add);
+fn param_grid(ui: &mut egui::Ui, _id: &str, add: impl FnOnce(&mut egui::Ui)) {
+    ui.vertical(|ui| {
+        ui.set_width(ui.available_width());
+        ui.spacing_mut().combo_width = ui.available_width() - COMBO_INSET;
+        add(ui);
+    });
 }
 
-/// A parameter's label: capitals, dim.
+/// A group of fields in the form. The fields name themselves, so the group has no title
+/// and only the space around it.
+fn form_section<R>(ui: &mut egui::Ui, _caps: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let out = ui
+        .vertical(|ui| {
+            ui.set_width(ui.available_width());
+            add(ui)
+        })
+        .inner;
+    ui.add_space(widgets::GAP_WIDGETS);
+    out
+}
+
+/// A parameter's label, above its control, in sentence case. The callers pass capitals.
 fn param_label(ui: &mut egui::Ui, caps: &str) {
-    ui.label(text::label(caps));
+    ui.add_space(widgets::GAP_WIDGETS);
+    ui.label(text::field_label(&sentence_case(caps)));
+    ui.add_space(widgets::GAP_LABEL);
+}
+
+/// `FILE FORMAT` becomes `File format`.
+fn sentence_case(caps: &str) -> String {
+    let lower = caps.to_lowercase();
+    let mut chars = lower.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
 }
 
 /// How a slider row formats its value.
@@ -2044,7 +2256,7 @@ fn render_results(
     }
 
     ui.add_space(widgets::GAP_WIDGETS);
-    widgets::section_panel(ui, "RESULT", |ui| {
+    form_section(ui, "RESULT", |ui| {
         // Text (Transcribe).
         if let Some(result) = &media.result_text {
             let mut shown = result.clone();
@@ -2496,7 +2708,7 @@ fn render_history(
     ui.add_space(widgets::GAP_WIDGETS);
     let mut restore: Option<usize> = None;
     let mut clear = false;
-    widgets::section_panel(ui, "EARLIER", |ui| {
+    form_section(ui, "EARLIER", |ui| {
         ui.horizontal(|ui| {
             widgets::readout(ui, widgets::READOUT_W, &media.history.len().to_string());
             if ui

@@ -241,10 +241,21 @@ pub fn panel_frame<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
 
 /// A panel with a section title.
 pub fn section_panel<R>(ui: &mut Ui, caps: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
-    panel_frame(ui, |ui| {
-        section_header(ui, caps);
-        add(ui)
-    })
+    let out = ui
+        .vertical(|ui| {
+            ui.set_width(ui.available_width());
+            section_header(ui, caps);
+            add(ui)
+        })
+        .inner;
+    ui.add_space(GAP_SECTIONS / 2.0);
+    ui.painter().hline(
+        ui.min_rect().x_range(),
+        ui.cursor().top(),
+        Stroke::new(HAIRLINE, theme::border()),
+    );
+    ui.add_space(GAP_SECTIONS / 2.0);
+    out
 }
 
 /// Lays `add` out with `SECTION_PADDING` around it, then paints `shape` of

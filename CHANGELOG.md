@@ -15,6 +15,7 @@ All notable changes to lokraft. The format follows [Keep a Changelog](https://ke
 
 - ui: redraw the interface flat, with a violet accent and IBM Plex.
 - ui: ask before clearing the chat, the log and the earlier results, like for a delete.
+- studio: put the form on the left with Generate in view, and the result on the right.
 - chat: write the conversation on a reading column, with the actions under the text.
 
 ### Fixed
