@@ -103,6 +103,41 @@ pub fn list_row<R>(ui: &mut Ui, first: bool, add: impl FnOnce(&mut Ui) -> R) -> 
         .inner
 }
 
+/// A group of exclusive choices in one bordered strip, the chosen one filled. Returns the
+/// index clicked this frame.
+pub fn segmented(ui: &mut Ui, labels: &[&str], selected: usize) -> Option<usize> {
+    let mut clicked = None;
+    egui::Frame::NONE
+        .stroke(Stroke::new(HAIRLINE, theme::border()))
+        .corner_radius(CornerRadius::same(theme::RADIUS_PX))
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            ui.horizontal(|ui| {
+                for (i, label) in labels.iter().enumerate() {
+                    let on = i == selected;
+                    let (fill, ink) = if on {
+                        (theme::accent_soft(), theme::accent())
+                    } else {
+                        (Color32::TRANSPARENT, theme::ink_dim())
+                    };
+                    let text = if on {
+                        text::value(label).color(ink)
+                    } else {
+                        text::note(label).color(ink)
+                    };
+                    let button = egui::Button::new(text)
+                        .fill(fill)
+                        .stroke(Stroke::NONE)
+                        .corner_radius(CornerRadius::same(theme::RADIUS_PX));
+                    if ui.add(button).clicked() {
+                        clicked = Some(i);
+                    }
+                }
+            });
+        });
+    clicked
+}
+
 /// Size of the icon on a button.
 const BUTTON_ICON_PT: f32 = 11.0;
 

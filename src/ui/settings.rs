@@ -111,11 +111,12 @@ pub fn render(
         // ── Appearance ──
         settings_panel(ui, "APPEARANCE", |ui| {
             form_row(ui, "THEME", |ui| {
-                for (label, value) in [("DARK", true), ("LIGHT", false)] {
-                    let is_active = config.dark_theme == value;
-                    if widgets::selector_pill(ui, label, is_active).clicked() && config.dark_theme != value {
-                        config.dark_theme = value;
-                        theme::apply(ctx, value);
+                let selected = if config.dark_theme { 0 } else { 1 };
+                if let Some(i) = widgets::segmented(ui, &["Dark", "Light"], selected) {
+                    let dark = i == 0;
+                    if config.dark_theme != dark {
+                        config.dark_theme = dark;
+                        theme::apply(ctx, dark);
                         config.save();
                     }
                 }

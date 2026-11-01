@@ -17,16 +17,16 @@ use crate::ui::widgets;
 /// Point size of the icons in the chrome row.
 const ICON_PT: f32 = 14.0;
 /// Fixed cells in the chrome row: the status word and the port.
-const STATUS_W: f32 = 84.0;
-const PORT_W: f32 = 120.0;
 /// Width of the search field.
 const SEARCH_W: f32 = 200.0;
 /// Fixed cells in an entry: the time and the level.
 const TIME_W: f32 = 96.0;
 const LEVEL_W: f32 = 48.0;
 /// Padding inside an entry.
+/// Alpha of the wash under a warning or an error line.
+const LOG_ROW_WASH_A: u8 = 22;
 const ROW_PAD_X: i8 = 8;
-const ROW_PAD_Y: i8 = 2;
+const ROW_PAD_Y: i8 = 3;
 /// Margin kept under the screen, and the least height it keeps.
 const SCREEN_BOTTOM_MARGIN: f32 = 20.0;
 const SCREEN_MIN_H: f32 = 100.0;
@@ -66,28 +66,31 @@ fn render_log_header(
     widgets::chrome_row(ui, |ui| {
         Icon::Server.show(ui, ICON_PT, theme::ink());
         ui.label(text::title("Logs"));
-        ui.add_space(widgets::GAP_WIDGETS);
-
         let (lit, tint, word) = server_lamp(&server.status);
-        widgets::lamp_inline(ui, lit, tint);
-        widgets::fixed_label(ui, STATUS_W, text::label(word));
-        if let Some(port) = embedded_port {
-            widgets::readout(ui, PORT_W, &format!("localhost:{port}"));
-        }
         ui.add_space(widgets::GAP_WIDGETS);
+        widgets::lamp_inline(ui, lit, tint);
+        ui.label(text::note(word));
+        if let Some(port) = embedded_port {
+            widgets::pill(ui, &format!("localhost:{port}"));
+        }
+    });
+    ui.add_space(widgets::GAP_WIDGETS);
 
-        ui.label(text::label("LEVEL"));
-        for filter in [
+    // The toolbar: the level as a segmented control, the search, and the actions.
+    ui.horizontal(|ui| {
+        let levels = [
             LogLevelFilter::All,
             LogLevelFilter::Info,
             LogLevelFilter::Warn,
             LogLevelFilter::Error,
-        ] {
-            if widgets::selector_pill(ui, filter.display_name(), server.log_filter == filter)
-                .clicked()
-            {
-                server.log_filter = filter;
-            }
+        ];
+        let labels: Vec<&str> = levels.iter().map(|l| l.display_name()).collect();
+        let selected = levels
+            .iter()
+            .position(|l| *l == server.log_filter)
+            .unwrap_or(0);
+        if let Some(i) = widgets::segmented(ui, &labels, selected) {
+            server.log_filter = levels[i];
         }
         ui.add_space(widgets::GAP_WIDGETS);
 
@@ -99,16 +102,18 @@ fn render_log_header(
         );
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if widgets::icon_button(ui, Icon::Trash, "Clear the log").clicked() {
+            if ui
+                .add(widgets::quiet_button("Clear"))
+                .on_hover_text("Clear the log")
+                .clicked()
+            {
                 server.log_clear_confirm_pending = true;
             }
             // The visible lines, as "HH:MM:SS.mmm LEVEL target: message".
-            if widgets::icon_button(
-                ui,
-                Icon::Copy,
-                "Copy the visible (filtered) lines to the clipboard",
-            )
-            .clicked()
+            if ui
+                .add(widgets::quiet_button("Copy"))
+                .on_hover_text("Copy the visible (filtered) lines to the clipboard")
+                .clicked()
             {
                 let text = server
                     .filtered_logs(log_buffer)
@@ -128,6 +133,7 @@ fn render_log_header(
             }
         });
     });
+    ui.add_space(widgets::GAP_WIDGETS);
     if server.log_clear_confirm_pending {
         let outcome = widgets::confirm_dialog(
             ui.ctx(),
@@ -211,22 +217,30 @@ fn level_stripe(level: LogLevel) -> Color32 {
 fn render_log_entry(ui: &mut egui::Ui, entry: &crate::log_buffer::LogEntry) {
     let tint = level_stripe(entry.level);
     let coloured = matches!(entry.level, LogLevel::Warn | LogLevel::Error);
-    let row = egui::Frame::NONE
+    let fill = if coloured {
+        theme::tinted(tint, LOG_ROW_WASH_A)
+    } else {
+        egui::Color32::TRANSPARENT
+    };
+    egui::Frame::NONE
+        .fill(fill)
+        .corner_radius(theme::RADIUS)
         .inner_margin(egui::Margin::symmetric(ROW_PAD_X, ROW_PAD_Y))
         .show(ui, |ui| {
             ui.set_min_width(ui.available_width());
             ui.horizontal(|ui| {
                 widgets::readout(ui, TIME_W, &entry.timestamp);
-                widgets::readout(ui, LEVEL_W, entry.level.as_str_padded());
+                let level_ink = if coloured { tint } else { theme::ink_dim() };
+                widgets::fixed_label(
+                    ui,
+                    LEVEL_W,
+                    text::mono(entry.level.as_str_padded()).color(level_ink),
+                );
                 let target_short = entry.target.rsplit("::").next().unwrap_or(&entry.target);
                 ui.label(text::readout(target_short));
-                let ink = if coloured { tint } else { theme::ink() };
-                ui.add(egui::Label::new(text::mono(&entry.message).color(ink)).selectable(true));
+                ui.add(egui::Label::new(text::mono(&entry.message)).selectable(true));
             });
         });
-    if coloured {
-        widgets::stripe(ui, row.response.rect, tint);
-    }
 }
 
 #[cfg(test)]
