@@ -1,94 +1,42 @@
 # lokraft
 
-The desktop client for [LOKEN](https://github.com/loken-ai/loken): a chat window, and a
-studio for generating images, audio and video against models running on your own machine.
-
-```sh
-cargo build --release      # target/release/lokraft
-```
-
-It talks to the server over HTTP and holds no model itself, so it runs on a laptop while the
-work happens on the box with the cards.
-
-## Chat
-
-A conversation with the model the header names. The reasoning a model produces before its
-answer sits folded above the answer, each reply carries its rate, token count and time, and
-a reply still arriving can be stopped from the composer. The clip beside the composer
-attaches an image for a vision model or speech for a transcription model, and Up on the
-first line or Down on the last recalls earlier prompts, as in a shell.
+The desktop client for [loken](https://github.com/loken-ai/loken): a chat window, and a studio for images, audio and video.  
+lokraft holds no model.
+It sends every request to the loken server you name, so it runs on a laptop while the models run on the machine with the cards.
 
 ![Chat: a conversation mid-answer, the first reply with its timing, the second still streaming](docs/img/lokraft-chat.png)
 
-The model picker also offers **Auto (smart routing)**. The turn then goes to the server's
-conversation route, which reads the prompt and decides what it asks for: a chat answer, a
-look at an attached picture, an image to draw, a line to speak or a sound to make. Plain
-rules decide the clear cases, a small classifier model the rest, and the render comes back
-in the conversation as a picture or a clip, and a notice names the route, the model and
-which of the two decided. The model selected in the picker stays the preference
-for the chat turns, and the visible history travels with every turn so the answer keeps
-its context. In a cluster the turn renders on the node that holds the model it needs, and
-the status line names that node.
+## Quick start
 
-## Media Studio
+```sh
+cargo build --release
+target/release/lokraft --server http://localhost:11435
+```
 
-One panel per kind of render: image, image editing, music, sound effects, MIDI, video,
-speech, transcription and source separation. Each kind keeps its own parameters, so moving
-from image to video and back loses nothing. Picking a model applies the steps, guidance and
-size it was validated at; the shapes offered are the buckets the models were trained on; a
-negative prompt, regions that keep two subjects apart and a seed are there when a render
-needs them. Video shows what a clip will cost before it renders, because the answer can be
-an hour.
+Linux needs the ALSA headers, `libasound2-dev`, for the audio output.
+[Install](docs/start/install.md) gives the packages of each system.
 
-![Media Studio: the image panel with a prompt, the model and its recommended settings, shape, sampling, guidance, regions and seed](docs/img/lokraft-media.png)
+## State
 
-What comes back opens in a viewer with fullscreen and zoom, above a strip of earlier
-generations that a new run does not wipe.
+Version 0.1.0.
+lokraft builds from source and publishes no prebuilt archive.  
+The continuous integration builds and tests it on Linux.
 
-## Models
+## Documentation
 
-What the server can serve, filtered by kind and sorted by name, size or date, with the
-loaded ones marked. A model is loaded, unloaded or deleted from its row, and a new one is
-pulled from Ollama or Hugging Face by tag, with a few quick installs a click away.
+| Page | What it covers |
+|---|---|
+| [Overview](docs/start/overview.md) | what lokraft does, view by view |
+| [Install](docs/start/install.md) and [First run](docs/start/first-run.md) | from the source to a first answer |
+| [Concepts](docs/start/concepts.md) | client and server, chosen model and Auto, connections |
+| [Guides](docs/guides/chat.md) | 1 page per task: chat, Auto, images, audio, video, models, terminal, log, server configuration |
+| [Reference](docs/reference/settings.md) | settings, Studio kinds, keyboard, command line, configuration file, server routes |
 
-![Models: three models with their kinds and sizes, one loaded, and the import bar](docs/img/lokraft-models.png)
+What each machine of a cluster is doing lives in [lokpit](https://github.com/loken-ai/lokpit).
 
-## Terminal and server logs
+## Contributing
 
-The server's own log as it works, filtered by level and searched by text, each line tagged
-with the part of the server that wrote it. A terminal beside it takes the server's own
-commands, to list, load, unload and pull models and to ask what the server is doing.
-
-![Server logs: the server's lines by level, a warning and an error picked out](docs/img/lokraft-logs.png)
-
-What each machine in a cluster is doing is not here: it lives in
-[lokpit](https://github.com/loken-ai/lokpit). One machine's view of its own cards could never
-show the others.
-
-The pictures are rendered by the test suite from state written in `src/screenshots.rs`, so
-they show the current layout and can show no real address, path or prompt. Regenerate them
-with `cargo test --release screenshots -- --ignored`.
-
-## Where it is careful
-
-- **Playback is in-process.** Handing audio to a system player makes the transport mean
-  something different on every platform - pause becomes killing a process, seeking becomes
-  restarting from a temporary file, and the position drifts. The samples are decoded here and
-  handed to the operating system's audio device.
-- **Video decodes as it plays.** Decoding a clip up front costs hundreds of megabytes before
-  the first picture appears, and the wait grows with the length of the clip. This keeps the
-  packets and produces pictures around the playhead.
-- **A cost estimate before a render, not after.** Video is the one kind where the answer can
-  be an hour, which is not something to discover by waiting.
-- **Contrast is a test, not an intention.** Muted text is pinned against the WCAG AA floor on
-  both the background and the card surface, in both themes, so a palette change cannot quietly
-  take fifty sites under it.
-
-## Build requirements
-
-Linux needs the ALSA development headers (`libasound2-dev`) for in-process audio; Windows and
-macOS need no system package. `--no-default-features` builds without audio output, and the
-transport then says so rather than behaving differently.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licence
 
