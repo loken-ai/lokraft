@@ -77,11 +77,7 @@ pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction>
                         close_modal = true;
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let delete_btn = egui::Button::image_and_text(
-                            Icon::Trash.image(ICON_PT, theme::on_accent()),
-                            text::value("Delete").color(theme::on_accent()),
-                        )
-                        .fill(theme::error());
+                        let delete_btn = widgets::danger_button_icon(Icon::Trash, "Delete");
                         if ui.add(delete_btn).clicked() {
                             confirmed = true;
                         }
@@ -463,8 +459,7 @@ pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction>
             // is in flight.
             let action_busy = models.action_status.is_in_progress();
             let pull_enabled = has_input && !action_busy;
-            let pull_btn = egui::Button::new(text::value("Pull").color(theme::on_accent()))
-                .fill(theme::accent());
+            let pull_btn = widgets::primary_button("Pull");
             let pull_resp = ui.add_enabled(pull_enabled, pull_btn);
             if action_busy {
                 pull_resp

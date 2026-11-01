@@ -94,8 +94,7 @@ pub fn render(
                         close_modal = true;
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let reset_btn = egui::Button::new(text::value("Reset").color(theme::on_accent()))
-                            .fill(theme::error());
+                        let reset_btn = widgets::danger_button("Reset");
                         if ui.add(reset_btn).clicked() {
                             confirmed = true;
                         }
@@ -323,8 +322,7 @@ pub fn render(
             settings_panel(ui, "ACTIONS", |ui| {
                 ui.horizontal(|ui| {
                     // Save config.toml
-                    let save_btn = egui::Button::new(text::value("Save config.toml").color(theme::on_accent()))
-                        .fill(theme::accent());
+                    let save_btn = widgets::primary_button("Save config.toml");
                     if ui
                         .add(save_btn)
                         .on_hover_text(
@@ -510,8 +508,7 @@ fn connections_panel(
         let mut cancel = false;
         ui.horizontal(|ui| {
             let label = if editing { "Save" } else { "Add connection" };
-            let btn = egui::Button::new(text::value(label).color(theme::on_accent()))
-                .fill(theme::accent());
+            let btn = widgets::primary_button(label);
             if ui.add(btn).clicked() {
                 submit = true;
             }
@@ -746,9 +743,7 @@ fn render_inapp_folder_picker(ctx: &egui::Context, editor: &mut ConfigEditorStat
                     close = true;
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let commit_btn =
-                        egui::Button::new(text::value("Use this folder").color(theme::on_accent()))
-                            .fill(theme::accent());
+                    let commit_btn = widgets::primary_button("Use this folder");
                     if ui.add(commit_btn).clicked() {
                         commit = true;
                     }

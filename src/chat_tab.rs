@@ -1439,11 +1439,7 @@ fn render_input_area(
                    Esc: cancel in-flight generation"
             };
             if chat.is_generating {
-                let stop_btn = egui::Button::image_and_text(
-                    Icon::Stop.image(ICON_PT_SMALL, theme::on_accent()),
-                    text::value("Stop").color(theme::on_accent()),
-                )
-                .fill(theme::error());
+                let stop_btn = widgets::danger_button_icon(Icon::Stop, "Stop");
                 if ui
                     .add(stop_btn)
                     .on_hover_text(
@@ -1458,11 +1454,7 @@ fn render_input_area(
                         .push_back(ChatMessage::system("[Generation cancelled by user]"));
                 }
             } else if send_enabled {
-                let send_btn = egui::Button::image_and_text(
-                    Icon::Play.image(ICON_PT_SMALL, theme::on_accent()),
-                    text::value("Send").color(theme::on_accent()),
-                )
-                .fill(theme::accent());
+                let send_btn = widgets::primary_button_icon(Icon::Play, "Send");
                 send_clicked = ui.add(send_btn).on_hover_text(send_tip).clicked();
             } else {
                 ui.add_enabled(

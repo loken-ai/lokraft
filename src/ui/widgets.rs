@@ -12,6 +12,42 @@ use crate::icons::Icon;
 use crate::theme::{self, text, HAIRLINE};
 use crate::ui::surface;
 
+/// Size of the icon on a button.
+const BUTTON_ICON_PT: f32 = 11.0;
+
+/// The main action of a form: a solid accent fill.
+pub fn primary_button(label: &str) -> egui::Button<'static> {
+    egui::Button::new(text::value(label).color(theme::on_accent())).fill(theme::accent())
+}
+
+/// A main action that carries an icon.
+pub fn primary_button_icon(icon: Icon, label: &str) -> egui::Button<'static> {
+    egui::Button::image_and_text(
+        icon.image(BUTTON_ICON_PT, theme::on_accent()),
+        text::value(label).color(theme::on_accent()),
+    )
+    .fill(theme::accent())
+}
+
+/// An action that stops or destroys: a solid error fill.
+pub fn danger_button(label: &str) -> egui::Button<'static> {
+    egui::Button::new(text::value(label).color(theme::on_accent())).fill(theme::error())
+}
+
+/// A destructive or stopping action that carries an icon.
+pub fn danger_button_icon(icon: Icon, label: &str) -> egui::Button<'static> {
+    egui::Button::image_and_text(
+        icon.image(BUTTON_ICON_PT, theme::on_accent()),
+        text::value(label).color(theme::on_accent()),
+    )
+    .fill(theme::error())
+}
+
+/// A secondary action, drawn as dim text without a frame.
+pub fn quiet_button(label: &str) -> egui::Button<'static> {
+    egui::Button::new(text::note(label)).frame(false)
+}
+
 /// Padding inside a section.
 pub const SECTION_PADDING: f32 = 12.0;
 /// Gap between widgets.

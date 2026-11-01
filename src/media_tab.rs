@@ -237,28 +237,22 @@ pub fn render(
             };
             let can_generate = !media.is_generating && inputs_ready;
             ui.horizontal(|ui| {
-                let gen_btn = egui::Button::image_and_text(
-                    Icon::Bolt.image(ICON_PT, theme::on_accent()),
-                    text::value(if media.is_generating {
+                let gen_btn = widgets::primary_button_icon(
+                    Icon::Bolt,
+                    if media.is_generating {
                         "Generating..."
                     } else {
                         "Generate"
-                    })
-                    .color(theme::on_accent()),
+                    },
                 )
-                .fill(theme::accent())
                 .min_size(GENERATE_SIZE);
                 if ui.add_enabled(can_generate, gen_btn).clicked() {
                     out.generate_clicked = true;
                 }
                 if media.is_generating {
                     ui.add_space(widgets::GAP_WIDGETS);
-                    let cancel_btn = egui::Button::image_and_text(
-                        Icon::Cross.image(ICON_PT_SMALL, theme::on_accent()),
-                        text::value("Cancel").color(theme::on_accent()),
-                    )
-                    .fill(theme::error())
-                    .min_size(CANCEL_SIZE);
+                    let cancel_btn =
+                        widgets::danger_button_icon(Icon::Stop, "Stop").min_size(CANCEL_SIZE);
                     let server_can_stop = media
                         .render_id
                         .lock()
