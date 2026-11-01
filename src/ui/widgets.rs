@@ -12,6 +12,21 @@ use crate::icons::Icon;
 use crate::theme::{self, text, HAIRLINE};
 use crate::ui::surface;
 
+/// The same shape for every screen that has nothing to show: an icon, what is missing,
+/// and what to do about it.
+pub fn empty_state(ui: &mut Ui, icon: Icon, title: &str, hint: &str) {
+    ui.add_space(GAP_SECTIONS);
+    ui.vertical_centered(|ui| {
+        icon.show(ui, text::EMPTY_STATE_ICON_PT, theme::ink_dim());
+        ui.add_space(GAP_WIDGETS);
+        ui.label(text::value(title));
+        if !hint.is_empty() {
+            ui.add_space(GAP_LABEL);
+            ui.label(text::note(hint));
+        }
+    });
+}
+
 /// Size of the icon on a button.
 const BUTTON_ICON_PT: f32 = 11.0;
 

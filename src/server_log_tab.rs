@@ -30,8 +30,6 @@ const ROW_PAD_Y: i8 = 2;
 /// Margin kept under the screen, and the least height it keeps.
 const SCREEN_BOTTOM_MARGIN: f32 = 20.0;
 const SCREEN_MIN_H: f32 = 100.0;
-/// Space above the empty state.
-const EMPTY_TOP: f32 = 40.0;
 
 /// Render the Server Log tab content
 pub fn render(
@@ -172,28 +170,23 @@ fn render_log_output(
                 let filtered_logs = server.filtered_logs(log_buffer);
 
                 if filtered_logs.is_empty() {
-                    ui.vertical_centered(|ui| {
-                        ui.add_space(EMPTY_TOP);
-                        let total_logs = log_buffer.count();
-                        if total_logs == 0 {
-                            ui.label(text::value("No logs yet."));
-                            ui.add_space(widgets::GAP_WIDGETS);
-                            // The buffer holds the GUI's own tracing output; an embedded
-                            // server's lines go through the same buffer.
-                            let tip = if embedded_port.is_some() {
-                                "Server logs will appear here as the server runs."
-                            } else {
-                                "Logs from the GUI's HTTP client and internal events appear here. \
-                                 Send a chat message or refresh the Models tab to generate some."
-                            };
-                            ui.label(text::note(tip));
-                            ui.add_space(widgets::GAP_WIDGETS);
-                            // The EnvFilter set up in init_gui_logging reads RUST_LOG.
-                            ui.label(text::mono("RUST_LOG=lokraft=debug lokraft"));
+                    if log_buffer.count() == 0 {
+                        // The buffer holds the app's own tracing output; an embedded
+                        // server's lines go through the same buffer.
+                        let hint = if embedded_port.is_some() {
+                            "Server logs will appear here as the server runs."
                         } else {
-                            ui.label(text::note("No logs match the current filter."));
-                        }
-                    });
+                            "The requests this app makes and its own events appear here."
+                        };
+                        widgets::empty_state(ui, Icon::Server, "No logs yet", hint);
+                    } else {
+                        widgets::empty_state(
+                            ui,
+                            Icon::Search,
+                            "No line matches",
+                            "Change the level or the search.",
+                        );
+                    }
                 } else {
                     for entry in filtered_logs.iter() {
                         render_log_entry(ui, entry);

@@ -14,8 +14,6 @@ use crate::ui::widgets;
 /// the output keeps.
 const CLI_INPUT_RESERVE: f32 = 72.0;
 const CLI_OUTPUT_MIN_H: f32 = 60.0;
-/// Space above the empty state.
-const EMPTY_TOP: f32 = 20.0;
 /// Width of the command column in the help list.
 const HELP_CMD_W: f32 = 160.0;
 /// Point size of the prompt mark in the chrome row.
@@ -83,10 +81,13 @@ pub fn render(ui: &mut egui::Ui, cli: &mut CLIState, _models: &ModelState) {
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     if cli.outputs.is_empty() {
-                        ui.add_space(EMPTY_TOP);
-                        ui.label(text::note("No commands executed yet."));
+                        widgets::empty_state(
+                            ui,
+                            crate::icons::Icon::Search,
+                            "No commands yet",
+                            "Type one below. These are the ones that exist:",
+                        );
                         ui.add_space(widgets::GAP_WIDGETS);
-                        ui.label(text::label("AVAILABLE COMMANDS"));
                         for (cmd, desc) in COMMAND_HELP {
                             ui.horizontal(|ui| {
                                 widgets::fixed_label(

@@ -270,6 +270,7 @@ pub fn visuals_for(p: &Palette) -> egui::Visuals {
     // A form is not zebra-striped: the label column and the rules carry it.
     v.striped = false;
     v.slider_trailing_fill = true;
+    v.handle_shape = egui::style::HandleShape::Circle;
     v
 }
 

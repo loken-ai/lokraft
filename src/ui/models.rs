@@ -252,15 +252,21 @@ pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction>
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 if visible_pairs.is_empty() {
-                    let msg = if narrowed {
-                        "No models match the filters."
+                    if narrowed {
+                        widgets::empty_state(
+                            ui,
+                            Icon::Package,
+                            "No model matches",
+                            "Change or clear the filters.",
+                        );
                     } else {
-                        "No models found. Use the Import panel below to download one."
-                    };
-                    ui.add_space(widgets::GAP_SECTIONS);
-                    ui.vertical_centered(|ui| {
-                        ui.label(text::note(msg));
-                    });
+                        widgets::empty_state(
+                            ui,
+                            Icon::Package,
+                            "No models yet",
+                            "Use the import bar below to download one.",
+                        );
+                    }
                     return;
                 }
                 for (model, modality) in &visible_pairs {
