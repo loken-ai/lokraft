@@ -28,6 +28,8 @@ pub struct Palette {
     // fill.
     pub accent: Color32,
     pub accent_dim: Color32,
+    // A wash of the accent for a selected row and a badge.
+    pub accent_soft: Color32,
     pub on_accent: Color32,
 
     // Status. Never used as an accent; each clears 3:1 on `bg` and `panel`.
@@ -50,6 +52,7 @@ pub const DARK: Palette = Palette {
     ink_dim: Color32::from_rgb(0x9C, 0xA2, 0xB3),
     accent: Color32::from_rgb(0xA5, 0x8C, 0xF5),
     accent_dim: Color32::from_rgb(0x7A, 0x66, 0xC4),
+    accent_soft: Color32::from_rgb(0x2A, 0x24, 0x47),
     on_accent: Color32::from_rgb(0x14, 0x11, 0x1F),
     success: Color32::from_rgb(0x5C, 0xC9, 0x8A),
     warning: Color32::from_rgb(0xE0, 0xB0, 0x4A),
@@ -68,6 +71,7 @@ pub const LIGHT: Palette = Palette {
     ink_dim: Color32::from_rgb(0x5B, 0x60, 0x70),
     accent: Color32::from_rgb(0x64, 0x44, 0xD4),
     accent_dim: Color32::from_rgb(0x8E, 0x76, 0xE6),
+    accent_soft: Color32::from_rgb(0xE9, 0xE4, 0xFB),
     on_accent: Color32::from_rgb(0xFF, 0xFF, 0xFF),
     success: Color32::from_rgb(0x1F, 0x7A, 0x46),
     warning: Color32::from_rgb(0x9A, 0x6A, 0x0A),
@@ -157,6 +161,9 @@ pub fn accent() -> Color32 {
 }
 pub fn accent_dim() -> Color32 {
     palette().accent_dim
+}
+pub fn accent_soft() -> Color32 {
+    palette().accent_soft
 }
 pub fn on_accent() -> Color32 {
     palette().on_accent

@@ -33,13 +33,10 @@ const SIDEBAR_PAD_Y: i8 = 8;
 /// one, the gap to the next.
 const NAV_ITEM_H: f32 = 32.0;
 const NAV_RADIUS: f32 = 4.0;
-const NAV_WASH_A: u8 = 24;
 const NAV_ITEM_GAP: f32 = 2.0;
 /// Space above a group heading.
 const NAV_GROUP_GAP: f32 = 12.0;
 /// The stripe beside the active item.
-const NAV_STRIPE: Vec2 = Vec2::new(3.0, 18.0);
-const NAV_STRIPE_RADIUS: f32 = 1.5;
 /// Inset of the icon from the stripe, and the gap between icon and label.
 const NAV_PAD_X: f32 = 8.0;
 const NAV_GAP: f32 = 6.0;
@@ -133,10 +130,9 @@ const CHROME_GAP: f32 = 12.0;
 const CHROME_TAIL_GAP: f32 = 8.0;
 /// Fixed cells of the chrome row: the status word, the model name, the
 /// loaded count; and how many characters of a model name are shown.
-const STATUS_W: f32 = 84.0;
-const MODEL_READOUT_W: f32 = 200.0;
-const MODEL_READOUT_CHARS: usize = 30;
-const METRICS_W: f32 = 72.0;
+/// The size of the mark, and how much white its top face takes.
+const BRAND_PT: f32 = 20.0;
+const BRAND_TOP_ALPHA: u8 = 70;
 /// How many characters of a connection name the switcher shows, and the width of its list.
 const CONNECTION_CHARS: usize = 24;
 const CONNECTION_MENU_W: f32 = 240.0;
@@ -172,9 +168,32 @@ pub struct TopBarOutput {
 fn connection_switcher(ui: &mut egui::Ui, input: &TopBarInput, out: &mut TopBarOutput) {
     let name = input.active_connection.unwrap_or("No connection");
     let shown = crate::modality::truncate_with_ellipsis(name, CONNECTION_CHARS);
+    let status = classify_top_bar_status(input.connection, input.server_running);
+    let pill = egui::Frame::NONE
+        .stroke(Stroke::new(HAIRLINE, theme::border()))
+        .corner_radius(egui::CornerRadius::same(255))
+        .inner_margin(egui::Margin::symmetric(10, 3))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                widgets::lamp_inline(ui, status.lit, status.color);
+                ui.label(text::value(shown.as_ref()));
+                let (rect, _) =
+                    ui.allocate_exact_size(Vec2::splat(surface::CHEVRON_W), Sense::hover());
+                surface::chevron(
+                    ui,
+                    rect,
+                    surface::Chevron::Down,
+                    Stroke::new(surface::CHEVRON_STROKE_W, theme::ink_dim()),
+                );
+            });
+        });
     let button = ui
-        .add(egui::Button::new(text::value(shown.as_ref())))
-        .on_hover_text("Switch to another server");
+        .interact(
+            pill.response.rect,
+            ui.make_persistent_id("connection_pill"),
+            Sense::click(),
+        )
+        .on_hover_text(format!("{}. Click to switch server.", status.caps));
     egui::Popup::menu(&button)
         .id(ui.make_persistent_id("connection_switcher"))
         .width(CONNECTION_MENU_W)
@@ -199,6 +218,29 @@ fn connection_switcher(ui: &mut egui::Ui, input: &TopBarInput, out: &mut TopBarO
         });
 }
 
+/// The mark of the application: a hexagon in the accent, lit on its top face.
+fn brand_mark(ui: &mut egui::Ui) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::splat(BRAND_PT), Sense::hover());
+    let c = rect.center();
+    let r = BRAND_PT / 2.0;
+    let pt = |angle_deg: f32, radius: f32| {
+        let a = angle_deg.to_radians();
+        Pos2::new(c.x + radius * a.cos(), c.y + radius * a.sin())
+    };
+    let outline: Vec<Pos2> = (0..6).map(|i| pt(-90.0 + 60.0 * i as f32, r)).collect();
+    ui.painter().add(egui::Shape::convex_polygon(
+        outline.clone(),
+        theme::accent(),
+        Stroke::NONE,
+    ));
+    let top = vec![outline[0], outline[1], c, outline[5]];
+    ui.painter().add(egui::Shape::convex_polygon(
+        top,
+        Color32::from_white_alpha(BRAND_TOP_ALPHA),
+        Stroke::NONE,
+    ));
+}
+
 /// The top bar: a plate of pinned height. Title, status lamp and word,
 /// model name in a fixed cell; in the tail the theme toggle, Refresh, the
 /// meter and the loaded count as a monospace readout.
@@ -215,36 +257,21 @@ pub fn top_bar(ui: &mut egui::Ui, input: &TopBarInput) -> TopBarOutput {
     egui::Panel::top("top_bar")
         .frame(egui::Frame::NONE.fill(theme::panel()).inner_margin(margin))
         .show(ui, |ui| {
-            surface::plate(ui, ui.max_rect().expand2(margin.sum() / 2.0), 0.0);
+            let outer = ui.max_rect().expand2(margin.sum() / 2.0);
+            ui.painter().hline(
+                outer.x_range(),
+                outer.bottom() - HAIRLINE / 2.0,
+                Stroke::new(HAIRLINE, theme::border()),
+            );
             ui.horizontal(|ui| {
                 ui.set_min_height(widgets::CHROME_ROW_H);
 
-                ui.label(text::title("Lokraft"));
-                ui.add_space(CHROME_GAP);
-
-                let status = classify_top_bar_status(input.connection, input.server_running);
-                widgets::lamp_inline(ui, status.lit, status.color);
-                widgets::fixed_label(ui, STATUS_W, text::label(status.caps))
-                    .on_hover_text(input.connection_detail);
+                brand_mark(ui);
+                ui.label(text::title("lokraft"));
                 ui.add_space(CHROME_GAP);
 
                 connection_switcher(ui, input, &mut out);
                 ui.add_space(CHROME_GAP);
-
-                match input.active_model {
-                    Some(model) => {
-                        let shown =
-                            crate::modality::truncate_with_ellipsis(model, MODEL_READOUT_CHARS);
-                        let cell =
-                            widgets::fixed_label(ui, MODEL_READOUT_W, text::value(shown.as_ref()));
-                        if model.len() > shown.len() {
-                            cell.on_hover_text(model);
-                        }
-                    }
-                    None => {
-                        widgets::fixed_label(ui, MODEL_READOUT_W, text::note("No model selected"));
-                    }
-                }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let theme_tip = if theme::is_dark() {
@@ -281,10 +308,13 @@ pub fn top_bar(ui: &mut egui::Ui, input: &TopBarInput) -> TopBarOutput {
                         surface::meter(ui, progress, METER_SIZE_CHROME, theme::accent());
                         ui.add_space(CHROME_TAIL_GAP);
                     }
-                    widgets::fixed_label(
+                    widgets::pill(
                         ui,
-                        METRICS_W,
-                        text::readout(&format!("{:>2} loaded", input.loaded)),
+                        &format!(
+                            "{} model{} loaded",
+                            input.loaded,
+                            if input.loaded == 1 { "" } else { "s" }
+                        ),
                     );
                 });
             });
@@ -344,7 +374,17 @@ pub fn sidebar(ui: &mut egui::Ui, current: &mut Section, expanded: bool) -> bool
                 }
                 let active = *current == item.section;
                 let tip = format!("{}\nShortcut: Ctrl+{}", item.tip, index + 1);
-                if nav_pill(ui, &item.icon, item.label, &tip, active, expanded).clicked() {
+                if nav_pill(
+                    ui,
+                    &item.icon,
+                    item.label,
+                    &tip,
+                    active,
+                    expanded,
+                    &(index + 1).to_string(),
+                )
+                .clicked()
+                {
                     *current = item.section;
                 }
                 ui.add_space(NAV_ITEM_GAP);
@@ -387,25 +427,21 @@ fn nav_pill(
     tip: &str,
     active: bool,
     expanded: bool,
+    shortcut: &str,
 ) -> Response {
     let accent = theme::accent();
     let (rect, response) =
         ui.allocate_exact_size(Vec2::new(ui.available_width(), NAV_ITEM_H), Sense::click());
     let painter = ui.painter();
     if active {
-        painter.rect_filled(rect, NAV_RADIUS, theme::tinted(accent, NAV_WASH_A));
-        let bar = Rect::from_center_size(
-            Pos2::new(rect.left() + NAV_STRIPE.x / 2.0, rect.center().y),
-            NAV_STRIPE,
-        );
-        painter.rect_filled(bar, NAV_STRIPE_RADIUS, accent);
+        painter.rect_filled(rect, NAV_RADIUS, theme::accent_soft());
     } else if response.hovered() {
         painter.rect_filled(rect, NAV_RADIUS, theme::raised());
     }
     let ink = if active { accent } else { theme::ink_dim() };
 
     let icon_cx = if expanded {
-        rect.left() + NAV_STRIPE.x + NAV_PAD_X + NAV_ICON_PT / 2.0
+        rect.left() + NAV_PAD_X + NAV_ICON_PT / 2.0
     } else {
         rect.center().x
     };
@@ -430,8 +466,18 @@ fn nav_pill(
             Pos2::new(icon_rect.right() + NAV_GAP, rect.center().y),
             Align2::LEFT_CENTER,
             label,
-            FontId::proportional(text::VALUE_PT),
+            FontId::new(
+                text::VALUE_PT,
+                egui::FontFamily::Name(theme::FONT_MEDIUM.into()),
+            ),
             ink,
+        );
+        ui.painter().text(
+            Pos2::new(rect.right() - NAV_PAD_X, rect.center().y),
+            Align2::RIGHT_CENTER,
+            shortcut,
+            FontId::monospace(text::READOUT_PT),
+            theme::ink_dim(),
         );
     }
 
