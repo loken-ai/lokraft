@@ -81,7 +81,8 @@ fn short_model_label(name: &str) -> String {
     }
 }
 
-/// Lay out the 2 halves of a form side by side when there is room, else one over the other.
+/// Lay out the 2 halves of a form side by side when there is room. Otherwise the first
+/// half comes first and the second is folded under Advanced.
 /// `add` is called once per half, with the half's number.
 fn two_up(ui: &mut egui::Ui, mut add: impl FnMut(&mut egui::Ui, usize)) {
     if ui.available_width() >= PARAMS_TWO_COLUMN_MIN_W {
@@ -90,9 +91,12 @@ fn two_up(ui: &mut egui::Ui, mut add: impl FnMut(&mut egui::Ui, usize)) {
             add(&mut cols[1], 1);
         });
     } else {
+        // One column: the main cards first, the rest folded under Advanced.
         add(ui, 0);
         ui.add_space(widgets::GAP_WIDGETS);
-        add(ui, 1);
+        egui::CollapsingHeader::new(text::value("Advanced"))
+            .default_open(false)
+            .show(ui, |ui| add(ui, 1));
     }
 }
 

@@ -151,19 +151,14 @@ pub const GAP_SECTIONS: f32 = 16.0;
 pub const GAP_LABEL: f32 = 4.0;
 
 /// The accent stripe beside a section title.
-const STRIPE_W: f32 = 4.0;
-const STRIPE_H: f32 = 18.0;
-const STRIPE_RADIUS: f32 = 2.0;
 /// The stripe along the left edge of a row.
 pub const ROW_STRIPE_W: f32 = 3.0;
 /// The accent wash behind a section title row, and its overhang.
-const HEADER_WASH_A: u8 = 12;
-const HEADER_WASH_PAD: Vec2 = Vec2::new(4.0, 1.0);
 /// Space after a section title.
 const HEADER_GAP_AFTER: f32 = 6.0;
 /// A panel's corner and padding.
-const PANEL_RADIUS: u8 = 4;
-const PANEL_PADDING: i8 = 10;
+const PANEL_RADIUS: u8 = 8;
+const PANEL_PADDING: i8 = 12;
 /// A pill's corner.
 const PILL_RADIUS: u8 = 3;
 /// The underline of the selected tab, the gap between tabs, the lead-in.
@@ -209,18 +204,7 @@ const RING_HOVER_GAMMA: f32 = 0.5;
 /// A section title: an accent stripe, capitals in the accent, a wash behind
 /// the row. `caps` is drawn as given.
 pub fn section_header(ui: &mut Ui, caps: &str) {
-    let accent = theme::accent();
-    let row = ui.horizontal(|ui| {
-        let (bar, _) = ui.allocate_exact_size(Vec2::new(STRIPE_W, STRIPE_H), Sense::hover());
-        ui.painter().rect_filled(bar, STRIPE_RADIUS, accent);
-        ui.label(text::section(caps));
-    });
-    let rect = row.response.rect;
-    ui.painter_at(rect).rect_filled(
-        rect.expand2(HEADER_WASH_PAD),
-        STRIPE_RADIUS,
-        theme::tinted(accent, HEADER_WASH_A),
-    );
+    ui.label(text::section(caps));
     ui.add_space(HEADER_GAP_AFTER);
 }
 
@@ -298,9 +282,7 @@ pub fn on_plate<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
 /// A chrome row: raised, bordered, one pinned height, its content centred
 /// on one line.
 pub fn chrome_row<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
-    egui::Frame::NONE
-        .fill(theme::raised())
-        .stroke(Stroke::new(HAIRLINE, theme::border()))
+    let shown = egui::Frame::NONE
         .inner_margin(Margin::symmetric(CHROME_MARGIN_X, CHROME_MARGIN_Y))
         .show(ui, |ui| {
             ui.set_min_width(ui.available_width());
@@ -309,8 +291,14 @@ pub fn chrome_row<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
                 add(ui)
             })
             .inner
-        })
-        .inner
+        });
+    let rect = shown.response.rect;
+    ui.painter().hline(
+        rect.x_range(),
+        rect.bottom(),
+        Stroke::new(HAIRLINE, theme::border()),
+    );
+    shown.inner
 }
 
 /// A painted heading across the available width. Silkscreen: painter text,

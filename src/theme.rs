@@ -300,7 +300,7 @@ pub mod text {
     pub const LABEL_FIELD_PT: f32 = 12.0;
     /// A value, a button, a name: the reading size of a control.
     pub const VALUE_PT: f32 = 13.0;
-    /// A section title: capitals in the accent.
+    /// A section title: capitals in the dim ink.
     pub const SECTION_PT: f32 = 11.0;
     /// Body prose.
     pub const BODY_PT: f32 = 13.0;
@@ -368,7 +368,7 @@ pub mod text {
         RichText::new(caps)
             .size(SECTION_PT)
             .strong()
-            .color(palette().accent)
+            .color(palette().ink_dim)
     }
     pub fn title(s: &str) -> RichText {
         RichText::new(s)
