@@ -27,6 +27,21 @@ pub fn empty_state(ui: &mut Ui, icon: Icon, title: &str, hint: &str) {
     });
 }
 
+/// Height of a slider, which sets the size of its handle.
+const SLIDER_H: f32 = 20.0;
+
+/// Style the slider added next in `ui`: a handle that is a plain accent dot. Call it
+/// inside a scope, so the rest of the row is left alone.
+pub fn style_slider(ui: &mut Ui) {
+    let style = ui.style_mut();
+    style.spacing.interact_size.y = SLIDER_H;
+    let w = &mut style.visuals.widgets;
+    for state in [&mut w.inactive, &mut w.hovered, &mut w.active] {
+        state.bg_fill = theme::accent();
+        state.fg_stroke = Stroke::NONE;
+    }
+}
+
 /// Size of the icon on a button.
 const BUTTON_ICON_PT: f32 = 11.0;
 

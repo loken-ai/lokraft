@@ -35,6 +35,8 @@ const NAV_ITEM_H: f32 = 32.0;
 const NAV_RADIUS: f32 = 4.0;
 const NAV_WASH_A: u8 = 24;
 const NAV_ITEM_GAP: f32 = 2.0;
+/// Space above a group heading.
+const NAV_GROUP_GAP: f32 = 12.0;
 /// The stripe beside the active item.
 const NAV_STRIPE: Vec2 = Vec2::new(3.0, 18.0);
 const NAV_STRIPE_RADIUS: f32 = 1.5;
@@ -57,6 +59,8 @@ struct NavItem {
     /// visible.
     tip: &'static str,
     section: Section,
+    /// A heading shown above this item, which starts a group.
+    group: Option<&'static str>,
 }
 
 /// Sidebar icon variants. Either an SVG-backed Icon or a literal
@@ -76,38 +80,44 @@ const NAV_ITEMS: &[NavItem] = &[
     NavItem {
         icon: NavIcon::Svg(Icon::Chat),
         label: "Chat",
-        tip: "Talk to a loaded model — text, vision, image-gen, TTS / ASR.",
+        tip: "Talk to a loaded model: text, vision, image generation, speech.",
         section: Section::Chat,
-    },
-    NavItem {
-        icon: NavIcon::Text(">_"),
-        label: "Terminal",
-        tip: "Model commands: list, loaded, load, unload, pull, delete, ps, clear, help.",
-        section: Section::Terminal,
-    },
-    NavItem {
-        icon: NavIcon::Svg(Icon::Package),
-        label: "Models",
-        tip: "Browse, install, load, and delete local models.",
-        section: Section::Models,
-    },
-    NavItem {
-        icon: NavIcon::Svg(Icon::Gear),
-        label: "Settings",
-        tip: "Connections, theme, config.toml editor.",
-        section: Section::Settings,
+        group: None,
     },
     NavItem {
         icon: NavIcon::Svg(Icon::Bolt),
         label: "Studio",
-        tip: "Media Studio — generate images, music, SFX, MIDI, video, speech.",
+        tip: "Generate images, music, sound effects, MIDI, video and speech.",
         section: Section::MediaStudio,
+        group: None,
+    },
+    NavItem {
+        icon: NavIcon::Svg(Icon::Package),
+        label: "Models",
+        tip: "Browse, install, load and delete models.",
+        section: Section::Models,
+        group: None,
     },
     NavItem {
         icon: NavIcon::Svg(Icon::Server),
         label: "Logs",
         tip: "This app's own log, with level and search filters.",
         section: Section::ServerLog,
+        group: Some("SYSTEM"),
+    },
+    NavItem {
+        icon: NavIcon::Text(">_"),
+        label: "Terminal",
+        tip: "Model commands: list, loaded, load, unload, pull, delete, ps, clear, help.",
+        section: Section::Terminal,
+        group: None,
+    },
+    NavItem {
+        icon: NavIcon::Svg(Icon::Gear),
+        label: "Settings",
+        tip: "Connections, theme, config.toml editor.",
+        section: Section::Settings,
+        group: None,
     },
 ];
 
@@ -320,6 +330,18 @@ pub fn sidebar(ui: &mut egui::Ui, current: &mut Section, expanded: bool) -> bool
             ui.add_space(NAV_GAP);
 
             for (index, item) in NAV_ITEMS.iter().enumerate() {
+                if let Some(group) = item.group {
+                    ui.add_space(NAV_GROUP_GAP);
+                    if expanded {
+                        ui.horizontal(|ui| {
+                            ui.add_space(NAV_PAD_X);
+                            ui.label(text::label(group));
+                        });
+                    } else {
+                        ui.separator();
+                    }
+                    ui.add_space(NAV_ITEM_GAP);
+                }
                 let active = *current == item.section;
                 let tip = format!("{}\nShortcut: Ctrl+{}", item.tip, index + 1);
                 if nav_pill(ui, &item.icon, item.label, &tip, active, expanded).clicked() {

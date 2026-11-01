@@ -1503,6 +1503,7 @@ fn slider_with_readout<T: egui::emath::Numeric>(
 ) -> bool {
     let slider = ui
         .scope(|ui| {
+            widgets::style_slider(ui);
             ui.spacing_mut().slider_width = widgets::SLIDER_TRACK_W;
             ui.add(egui::Slider::new(value, range.clone()).show_value(false))
         })

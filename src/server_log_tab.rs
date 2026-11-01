@@ -65,7 +65,7 @@ fn render_log_header(
 ) {
     widgets::chrome_row(ui, |ui| {
         Icon::Server.show(ui, ICON_PT, theme::ink());
-        ui.label(text::title("Server Logs"));
+        ui.label(text::title("Logs"));
         ui.add_space(widgets::GAP_WIDGETS);
 
         let (lit, tint, word) = server_lamp(&server.status);

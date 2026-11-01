@@ -102,7 +102,7 @@ pub fn render(
         .show(ui, |ui| {
             widgets::chrome_row(ui, |ui| {
                 Icon::Bolt.show(ui, ICON_PT, theme::ink());
-                ui.label(text::title("Media Studio"));
+                ui.label(text::title("Studio"));
                 ui.add_space(widgets::GAP_WIDGETS);
                 widgets::caption_row(
                     ui,
@@ -1263,6 +1263,7 @@ fn slider_row<T: egui::emath::Numeric>(
         .horizontal(|ui| {
             let slider = ui
                 .scope(|ui| {
+                    widgets::style_slider(ui);
                     ui.spacing_mut().slider_width = widgets::SLIDER_TRACK_W;
                     ui.add(
                         egui::Slider::new(value, range.clone())
@@ -2233,6 +2234,7 @@ fn render_results(
                         let mut pos = player.position();
                         let resp = ui
                             .scope(|ui| {
+                                widgets::style_slider(ui);
                                 ui.spacing_mut().slider_width = widgets::SLIDER_TRACK_W;
                                 ui.add(egui::Slider::new(&mut pos, 0.0..=dur).show_value(false))
                             })
@@ -2430,6 +2432,7 @@ fn render_video_player(ui: &mut egui::Ui, video: &mut crate::video_engine::Video
         // Seeking is instant because the clip is decoded up front.
         let seek = ui
             .scope(|ui| {
+                widgets::style_slider(ui);
                 ui.spacing_mut().slider_width = widgets::SLIDER_TRACK_W;
                 ui.add(egui::Slider::new(&mut pos, 0..=total.saturating_sub(1)).show_value(false))
             })
@@ -2811,7 +2814,7 @@ mod render_tests {
                 |_| {},
                 |has| {
                     assert!(
-                        has("Media Studio"),
+                        has("Studio"),
                         "{kind:?} panel did not render the studio header"
                     );
                 },
@@ -3286,10 +3289,16 @@ fn render_video_viewer(
                         }
                         if total > 1 {
                             let mut pos = idx;
-                            if ui
-                                .add(egui::Slider::new(&mut pos, 0..=total - 1).show_value(false))
-                                .changed()
-                            {
+                            let seeked = ui
+                                .scope(|ui| {
+                                    widgets::style_slider(ui);
+                                    ui.add(
+                                        egui::Slider::new(&mut pos, 0..=total - 1)
+                                            .show_value(false),
+                                    )
+                                })
+                                .inner;
+                            if seeked.changed() {
                                 seek = Some(pos);
                             }
                         }
