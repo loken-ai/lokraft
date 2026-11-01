@@ -11,6 +11,7 @@ All notable changes to lokraft. The format follows [Keep a Changelog](https://ke
 - terminal: report an unload once the server has answered.
 - chat: let Auto send without a model picked.
 - terminal: name every command the same way in the header and help.
+- chat: name Auto where the model is shown.
 
 ### Removed
 

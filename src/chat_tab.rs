@@ -27,6 +27,9 @@ use crate::modality::{
 };
 use crate::state::{ChatDialogResult, ChatMessage, ChatState, ModelState};
 use crate::texture::{clear_attach_chip_textures, image_cache_key, load_base64_texture};
+/// What the model picker and the top bar call smart routing.
+pub(crate) const AUTO_LABEL: &str = "Auto (smart routing)";
+
 use crate::theme::{self, text, HAIRLINE};
 use crate::ui::{surface, widgets};
 
@@ -734,7 +737,7 @@ fn render_chat_header(
                 .is_some_and(|m| models.is_loaded(m));
         widgets::lamp_inline(ui, current_is_loaded, theme::success());
         let selected_text: std::borrow::Cow<str> = if chat.smart_auto {
-            "Auto (smart routing)".into()
+            AUTO_LABEL.into()
         } else {
             match selected.map(String::as_str) {
                 Some(m) => truncate_with_ellipsis(m, MODEL_CHARS),
@@ -798,7 +801,7 @@ fn render_chat_header(
                 let auto_row = ui
                     .selectable_label(
                         chat.smart_auto,
-                        RichText::new("Auto (smart routing)").size(text::SECTION_PT),
+                        RichText::new(AUTO_LABEL).size(text::SECTION_PT),
                     )
                     .on_hover_text(
                         "Let the server pick the model per prompt: chat, vision, \
@@ -979,7 +982,8 @@ fn render_input_area(
     let mut send_clicked = false;
     widgets::well(ui, |ui| {
         // The seed lock: the next send reuses this seed. The close mark clears it.
-        if let Some(seed) = chat.locked_seed {
+        // Auto renders with its own seed, so a lock would promise what it cannot do.
+        if let Some(seed) = chat.locked_seed.filter(|_| !chat.smart_auto) {
             ui.horizontal(|ui| {
                 Icon::Lock.show(ui, ICON_PT_SMALL, theme::ink_dim());
                 widgets::readout(ui, widgets::READOUT_WIDE_W, &format!("SEED {seed}"))

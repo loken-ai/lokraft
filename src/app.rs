@@ -3336,7 +3336,11 @@ impl eframe::App for LLMGuiApp {
         }
 
         // ── TOP BAR ──
-        let active_model = self.models.selected_model.as_deref();
+        let active_model = if self.chat.smart_auto {
+            Some(crate::chat_tab::AUTO_LABEL)
+        } else {
+            self.models.selected_model.as_deref()
+        };
         let server_running = matches!(self.server.status, ServerStatus::Running { .. });
 
         // The top-bar Refresh reflects an in-flight refresh: refresh_models
