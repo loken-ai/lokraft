@@ -259,13 +259,14 @@ pub fn render(
                     )
                     .fill(theme::error())
                     .min_size(CANCEL_SIZE);
+                    let server_can_stop = media
+                        .render_id
+                        .lock()
+                        .map(|id| id.is_some())
+                        .unwrap_or(false);
                     if ui
                         .add(cancel_btn)
-                        .on_hover_text(
-                            "Stop this generation now: the server is told to cancel the \
-                             render, and both the denoise and the decode stop at their \
-                             next step.",
-                        )
+                        .on_hover_text(crate::state::cancel_tooltip(server_can_stop))
                         .clicked()
                     {
                         // The identifier is handed to the caller, which owns the HTTP

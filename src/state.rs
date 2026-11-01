@@ -1846,9 +1846,31 @@ impl MediaState {
         }
         if self.is_generating {
             self.finish_generation();
-            self.status = "Cancelled.".to_string();
+            self.status = cancelled_status(id.is_some()).to_string();
         }
         id
+    }
+}
+
+/// What the Studio says after a cancel.
+/// With a render id the server was told to stop.
+/// Without one only the wait ended, and the server finishes the render.
+pub fn cancelled_status(server_told: bool) -> &'static str {
+    if server_told {
+        "Cancelled."
+    } else {
+        "Stopped waiting. The server finishes this render."
+    }
+}
+
+/// The Cancel button tooltip, by whether the server has named the render yet.
+pub fn cancel_tooltip(server_can_stop: bool) -> &'static str {
+    if server_can_stop {
+        "Stop this generation: the server is told to cancel the render, and it stops at \
+         its next step."
+    } else {
+        "Stop waiting for this generation. The server has not named this render, so it \
+         finishes it."
     }
 }
 
@@ -2208,6 +2230,21 @@ mod chat_history_tests {
     use super::*;
 
     // ── Media Studio state ──────────────────────────────────────────
+
+    #[test]
+    fn cancel_says_whether_the_server_was_told() {
+        let mut named = MediaState::default();
+        named.begin_generation();
+        *named.render_id.lock().unwrap() = Some("render-1".into());
+        assert_eq!(named.cancel_generation().as_deref(), Some("render-1"));
+        assert_eq!(named.status, cancelled_status(true));
+
+        let mut unnamed = MediaState::default();
+        unnamed.begin_generation();
+        assert_eq!(unnamed.cancel_generation(), None);
+        assert_eq!(unnamed.status, cancelled_status(false));
+        assert_ne!(cancel_tooltip(true), cancel_tooltip(false));
+    }
 
     #[test]
     fn media_parsed_seed_empty_is_random_and_valid_parses() {
