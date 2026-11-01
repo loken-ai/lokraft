@@ -198,8 +198,42 @@ fn short_exchange(app: &mut LLMGuiApp) {
     }
 }
 
+/// A sunset gradient as a PNG in base64, standing for a rendered image.
+fn sample_render() -> String {
+    use base64::Engine;
+    let mut img = image::RgbImage::new(768, 768);
+    for (x, y, px) in img.enumerate_pixels_mut() {
+        let t = y as f32 / 768.0;
+        let glow = (1.0 - ((x as f32 - 560.0).powi(2) + (y as f32 - 470.0).powi(2)).sqrt() / 220.0)
+            .clamp(0.0, 1.0);
+        let r = (40.0 + 200.0 * t + 80.0 * glow).min(255.0) as u8;
+        let g = (36.0 + 110.0 * t + 100.0 * glow).min(255.0) as u8;
+        let b = (80.0 + 40.0 * (1.0 - t) + 20.0 * glow).min(255.0) as u8;
+        *px = image::Rgb([r, g, b]);
+    }
+    let mut bytes = Vec::new();
+    image::DynamicImage::ImageRgb8(img)
+        .write_to(
+            &mut std::io::Cursor::new(&mut bytes),
+            image::ImageFormat::Png,
+        )
+        .expect("encode");
+    base64::engine::general_purpose::STANDARD.encode(bytes)
+}
+
 /// The settings, the terminal, and the panels and menus that open from a click.
 fn review() {
+    shoot_skin(
+        REVIEW_OUT,
+        "studio-result-dark",
+        true,
+        Section::MediaStudio,
+        |app| {
+            app.media.kind = crate::state::MediaKind::Image;
+            app.media.prompt = "a lighthouse on a basalt shore, low sun, long exposure".into();
+            app.media.result_images = vec![sample_render()];
+        },
+    );
     use egui_kittest::kittest::Queryable;
     for dark in [true, false] {
         let skin = if dark { "dark" } else { "light" };

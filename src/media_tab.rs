@@ -39,6 +39,8 @@ const GENERATE_SIZE: egui::Vec2 = egui::Vec2::new(140.0, 34.0);
 const CANCEL_SIZE: egui::Vec2 = egui::Vec2::new(90.0, 34.0);
 /// Longest side of a result image, and of the inline video frame.
 const RESULT_MAX_PX: f32 = 360.0;
+/// Room the frame around a single result takes from its width.
+const RESULT_FRAME_PAD: f32 = 24.0;
 const VIDEO_INLINE_MAX_PX: f32 = 420.0;
 /// The hover bar over a result image: its inset, height, gap between halves.
 const OVERLAY_PAD: f32 = 6.0;
@@ -2260,6 +2262,18 @@ fn render_results(
     }
 
     ui.add_space(widgets::GAP_WIDGETS);
+    // The stage bar: what this is, and the settings it was made with.
+    ui.horizontal(|ui| {
+        ui.label(text::title("Result"));
+        if media.kind == MediaKind::Image && !media.result_images.is_empty() {
+            widgets::pill(
+                ui,
+                &format!("{} x {}", media.image.width, media.image.height),
+            );
+            widgets::pill(ui, &format!("{} steps", media.image.steps));
+        }
+    });
+    ui.add_space(widgets::GAP_WIDGETS);
     form_section(ui, "RESULT", |ui| {
         // Text (Transcribe).
         if let Some(result) = &media.result_text {
@@ -2308,7 +2322,13 @@ fn render_results(
                 ui.horizontal_wrapped(|ui| {
                     for (i, tex_handle) in texes.iter().enumerate() {
                         let tex_size = tex_handle.size_vec2();
-                        let scale = (RESULT_MAX_PX / tex_size.x.max(tex_size.y)).min(1.0);
+                        // A single image fills the column. Several share it at a fixed size.
+                        let fit = if texes.len() == 1 {
+                            (ui.available_width() - RESULT_FRAME_PAD) / tex_size.x
+                        } else {
+                            RESULT_MAX_PX / tex_size.x.max(tex_size.y)
+                        };
+                        let scale = fit.min(1.0);
                         let resp = crate::image_viewer::image_response(
                             ui,
                             tex_handle,

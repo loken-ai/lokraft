@@ -42,6 +42,16 @@ pub fn style_slider(ui: &mut Ui) {
     }
 }
 
+/// A small rounded label for a fact about what is shown, such as a size or a step count.
+pub fn pill(ui: &mut Ui, label: &str) -> Response {
+    egui::Frame::NONE
+        .stroke(Stroke::new(HAIRLINE, theme::border()))
+        .corner_radius(CornerRadius::same(255))
+        .inner_margin(Margin::symmetric(8, 2))
+        .show(ui, |ui| ui.label(text::note(label)))
+        .response
+}
+
 /// Size of the icon on a button.
 const BUTTON_ICON_PT: f32 = 11.0;
 
