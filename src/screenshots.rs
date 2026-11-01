@@ -83,8 +83,21 @@ fn shoot_acting(
     dress: impl FnOnce(&mut LLMGuiApp) + 'static,
     act: impl FnOnce(&mut Harness<'_, LLMGuiApp>),
 ) {
+    shoot_sized(WINDOW, out, name, dark, section, dress, act);
+}
+
+/// `shoot_acting`, in a window of the given size.
+fn shoot_sized(
+    window: (f32, f32),
+    out: &str,
+    name: &str,
+    dark: bool,
+    section: Section,
+    dress: impl FnOnce(&mut LLMGuiApp) + 'static,
+    act: impl FnOnce(&mut Harness<'_, LLMGuiApp>),
+) {
     let mut harness = Harness::builder()
-        .with_size(egui::vec2(WINDOW.0, WINDOW.1))
+        .with_size(egui::vec2(window.0, window.1))
         .build_eframe(move |cc| {
             let mut app = LLMGuiApp::new(
                 cc,
@@ -349,6 +362,41 @@ fn media_studio() {
         app.media.kind = crate::state::MediaKind::Image;
         app.media.prompt = "a lighthouse on a basalt shore, low sun, long exposure".into();
     });
+}
+
+/// The zoom of the Studio shot with a result, small enough for the whole render under its header.
+const STUDIO_RESULT_ZOOM: f32 = 0.7;
+
+/// A render made by the server for the prompt of the Studio shot, as the base64 the panel holds.
+fn lighthouse_render() -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD
+        .encode(include_bytes!("../tests/fixtures/lighthouse.png"))
+}
+
+/// The Studio with the render of its prompt in the result area.
+#[test]
+#[ignore = "writes docs/img, needs a graphics adapter"]
+fn studio_result() {
+    use egui_kittest::kittest::Queryable;
+    let _renderer = render_lock();
+    shoot_acting(
+        OUT,
+        "lokraft-studio-result",
+        true,
+        Section::MediaStudio,
+        |app| {
+            app.media.kind = crate::state::MediaKind::Image;
+            app.media.prompt = "a lighthouse on a basalt shore, low sun, long exposure".into();
+            app.media.result_images = vec![lighthouse_render()];
+        },
+        |h| {
+            h.ctx.set_zoom_factor(STUDIO_RESULT_ZOOM);
+            h.run_steps(3);
+            h.get_by_label("Result").scroll_to_me();
+            h.run_steps(3);
+        },
+    );
 }
 
 /// The model list with one model loaded, and the import panel under it.
