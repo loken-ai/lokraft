@@ -48,6 +48,69 @@ pub fn quiet_button(label: &str) -> egui::Button<'static> {
     egui::Button::new(text::note(label)).frame(false)
 }
 
+/// Width of a confirmation dialog.
+const CONFIRM_W: f32 = 380.0;
+
+/// What a confirmation asks, in the same words on every screen.
+pub struct Confirm<'a> {
+    pub title: &'a str,
+    pub question: &'a str,
+    /// What the action applies to, shown in monospace.
+    pub subject: Option<&'a str>,
+    pub detail: &'a str,
+    /// The label of the action, which is also the label of its button.
+    pub action: &'a str,
+}
+
+/// A confirmation before an action that cannot be undone. `Some(true)` when confirmed,
+/// `Some(false)` when cancelled with the button or Escape, `None` while it waits.
+/// The action never answers to Enter: a key held down must not destroy anything.
+pub fn confirm_dialog(ctx: &egui::Context, c: &Confirm) -> Option<bool> {
+    let mut confirmed = false;
+    let mut cancelled = false;
+    egui::Window::new(c.title)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.set_min_width(CONFIRM_W);
+            ui.add_space(GAP_LABEL);
+            ui.label(text::value(c.question));
+            if let Some(subject) = c.subject {
+                ui.add_space(GAP_LABEL);
+                well(ui, |ui| {
+                    ui.label(text::mono(subject));
+                });
+            }
+            if !c.detail.is_empty() {
+                ui.add_space(GAP_WIDGETS);
+                ui.label(text::note(c.detail));
+            }
+            ui.add_space(GAP_WIDGETS);
+            ui.horizontal(|ui| {
+                if ui.add(egui::Button::new(text::note("Cancel"))).clicked() {
+                    cancelled = true;
+                }
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if ui.add(danger_button(c.action)).clicked() {
+                        confirmed = true;
+                    }
+                });
+            });
+            ui.add_space(GAP_LABEL);
+        });
+    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        cancelled = true;
+    }
+    if confirmed {
+        Some(true)
+    } else if cancelled {
+        Some(false)
+    } else {
+        None
+    }
+}
+
 /// Padding inside a section.
 pub const SECTION_PADDING: f32 = 12.0;
 /// Gap between widgets.
@@ -403,6 +466,40 @@ pub fn popup_max_h(ui: &Ui) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Run a confirmation in a headless frame and return what it answered.
+    fn answer(act: impl FnOnce(&mut egui_kittest::Harness<'_>)) -> Option<bool> {
+        let outcome = std::rc::Rc::new(std::cell::Cell::new(None));
+        let sink = outcome.clone();
+        let mut harness = egui_kittest::Harness::new_ui(move |ui| {
+            let asked = confirm_dialog(
+                ui.ctx(),
+                &Confirm {
+                    title: "Delete model",
+                    question: "Delete this model from disk?",
+                    subject: Some("m"),
+                    detail: "",
+                    action: "Delete",
+                },
+            );
+            if asked.is_some() {
+                sink.set(asked);
+            }
+        });
+        harness.run();
+        act(&mut harness);
+        harness.run();
+        outcome.get()
+    }
+
+    #[test]
+    fn a_confirmation_answers_to_its_buttons_and_escape_but_not_to_enter() {
+        use egui_kittest::kittest::Queryable;
+        assert_eq!(answer(|h| h.key_press(egui::Key::Enter)), None);
+        assert_eq!(answer(|h| h.key_press(egui::Key::Escape)), Some(false));
+        assert_eq!(answer(|h| h.get_by_label("Cancel").click()), Some(false));
+        assert_eq!(answer(|h| h.get_by_label("Delete").click()), Some(true));
+    }
 
     fn frame(dark: bool, body: impl FnMut(&mut Ui)) {
         let _skin = theme::skin_lock();

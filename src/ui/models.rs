@@ -37,7 +37,6 @@ const ROW_PAD_Y: i8 = 6;
 const FOOTER_RESERVE: f32 = 200.0;
 const LIST_MIN_H: f32 = 120.0;
 /// Width of the delete confirmation, and the least room the pull field keeps.
-const CONFIRM_W: f32 = 360.0;
 const PULL_FIELD_MIN_W: f32 = 140.0;
 const PULL_BUTTON_RESERVE: f32 = 64.0;
 /// Speed of the indeterminate sweep while a pull has no byte count yet.
@@ -52,49 +51,17 @@ pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction>
     // Delete is two steps: the name is stashed, a centred window asks, and the
     // action is dispatched on confirmation only. Escape closes without acting.
     let pending_action = if let Some(name) = models.delete_confirm_pending.as_ref() {
-        let mut close_modal = false;
-        let mut confirmed = false;
-        egui::Window::new("Confirm delete")
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .show(ui.ctx(), |ui| {
-                ui.set_min_width(CONFIRM_W);
-                ui.add_space(widgets::GAP_LABEL);
-                ui.label(text::value("Delete this model from disk?"));
-                ui.add_space(widgets::GAP_LABEL);
-                widgets::well(ui, |ui| {
-                    ui.label(text::mono(name));
-                });
-                ui.add_space(widgets::GAP_WIDGETS);
-                ui.label(text::note(
-                    "This permanently removes the model files. \
-                     You can re-download from the source registry later.",
-                ));
-                ui.add_space(widgets::GAP_WIDGETS);
-                ui.horizontal(|ui| {
-                    if ui.add(egui::Button::new(text::note("Cancel"))).clicked() {
-                        close_modal = true;
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let delete_btn = widgets::danger_button_icon(Icon::Trash, "Delete");
-                        if ui.add(delete_btn).clicked() {
-                            confirmed = true;
-                        }
-                    });
-                });
-                ui.add_space(widgets::GAP_LABEL);
-            });
-        if ui.ctx().input(|i| i.key_pressed(egui::Key::Escape)) {
-            close_modal = true;
-        }
-        if confirmed {
-            Some(true)
-        } else if close_modal {
-            Some(false)
-        } else {
-            None
-        }
+        widgets::confirm_dialog(
+            ui.ctx(),
+            &widgets::Confirm {
+                title: "Delete model",
+                question: "Delete this model from disk?",
+                subject: Some(name),
+                detail: "This permanently removes the model files. \
+                         You can download it again from its source later.",
+                action: "Delete",
+            },
+        )
     } else {
         None
     };

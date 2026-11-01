@@ -2560,7 +2560,25 @@ fn render_history(
         });
     });
     if clear {
-        media.history.clear();
+        media.history_clear_confirm_pending = true;
+    }
+    if media.history_clear_confirm_pending {
+        let outcome = widgets::confirm_dialog(
+            ui.ctx(),
+            &widgets::Confirm {
+                title: "Forget earlier results",
+                question: "Forget the earlier results?",
+                subject: None,
+                detail: "They are removed from this session and their memory is freed. Files you saved are kept.",
+                action: "Forget",
+            },
+        );
+        if let Some(confirmed) = outcome {
+            media.history_clear_confirm_pending = false;
+            if confirmed {
+                media.history.clear();
+            }
+        }
     }
     if let Some(i) = restore {
         media.restore_from_history(i);

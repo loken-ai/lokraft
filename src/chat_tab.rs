@@ -922,15 +922,33 @@ fn render_chat_header(
                 ui.label(text);
             });
             if resp.clicked() {
-                chat.clear_conversation();
-                // The textures keyed by msg_*, gen_* and attach_* go with the
-                // messages, and so does the markdown viewer's scroll state.
-                image_textures.clear();
-                md_cache.clear_scrollable();
+                chat.clear_confirm_pending = true;
             }
             ui.add_space(widgets::GAP_WIDGETS);
             generation_button(ui, chat, generation);
         });
+        if chat.clear_confirm_pending {
+            let outcome = widgets::confirm_dialog(
+                ui.ctx(),
+                &widgets::Confirm {
+                    title: "Clear conversation",
+                    question: "Clear this conversation?",
+                    subject: None,
+                    detail: "The messages and attached files go. Saved images on disk and the prompt history are kept.",
+                    action: "Clear",
+                },
+            );
+            if let Some(confirmed) = outcome {
+                chat.clear_confirm_pending = false;
+                if confirmed {
+                    chat.clear_conversation();
+                    // The textures keyed by msg_*, gen_* and attach_* go with the
+                    // messages, and so does the markdown viewer's scroll state.
+                    image_textures.clear();
+                    md_cache.clear_scrollable();
+                }
+            }
+        }
     });
 }
 

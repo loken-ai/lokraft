@@ -102,7 +102,7 @@ fn render_log_header(
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if widgets::icon_button(ui, Icon::Trash, "Clear the log").clicked() {
-                log_buffer.clear();
+                server.log_clear_confirm_pending = true;
             }
             // The visible lines, as "HH:MM:SS.mmm LEVEL target: message".
             if widgets::icon_button(
@@ -130,6 +130,24 @@ fn render_log_header(
             }
         });
     });
+    if server.log_clear_confirm_pending {
+        let outcome = widgets::confirm_dialog(
+            ui.ctx(),
+            &widgets::Confirm {
+                title: "Clear log",
+                question: "Clear the log?",
+                subject: None,
+                detail: "The lines shown here are forgotten.",
+                action: "Clear",
+            },
+        );
+        if let Some(confirmed) = outcome {
+            server.log_clear_confirm_pending = false;
+            if confirmed {
+                log_buffer.clear();
+            }
+        }
+    }
 }
 
 /// The log, behind the glass of a screen that fills the height and follows

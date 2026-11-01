@@ -17,8 +17,6 @@ const ICON_PT: f32 = 14.0;
 const SETTINGS_COLUMN_W: f32 = 640.0;
 /// Room kept beside a field for the button that follows it.
 const FIELD_BUTTON_RESERVE: f32 = 70.0;
-/// Width of a confirmation.
-const CONFIRM_W: f32 = 380.0;
 /// The folder picker: its default size, the room kept for its action row,
 /// the least height of its list, the room beside its path field.
 const PICKER_W: f32 = 520.0;
@@ -66,45 +64,18 @@ pub fn render(
     // selected model without recovery, so guard against fat-fingers
     // and accidental clicks.
     if settings_state.reset_confirm_pending {
-        let mut close_modal = false;
-        let mut confirmed = false;
-        egui::Window::new("Reset GUI defaults")
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .show(ctx, |ui| {
-                ui.set_min_width(CONFIRM_W);
-                ui.add_space(widgets::GAP_LABEL);
-                ui.label(text::value("Reset all GUI settings to defaults?"));
-                ui.add_space(widgets::GAP_WIDGETS);
-                ui.label(text::note(
-                    "This wipes:\n  - All connections and their API keys\n  - Generation parameters\n  - Selected model\n  - Theme / window preferences",
-                ));
-                ui.add_space(widgets::GAP_WIDGETS);
-                widgets::caption_row(ui, "Local model files on disk are not affected.");
-                widgets::caption_row(
-                    ui,
-                    "A backup of the current config.json is saved as \
-                     config.json.before_reset.<timestamp> in the same folder, so you can \
-                     restore it manually if needed.",
-                );
-                ui.add_space(widgets::GAP_WIDGETS);
-                ui.horizontal(|ui| {
-                    if ui.add(egui::Button::new(text::note("Cancel"))).clicked() {
-                        close_modal = true;
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let reset_btn = widgets::danger_button("Reset");
-                        if ui.add(reset_btn).clicked() {
-                            confirmed = true;
-                        }
-                    });
-                });
-                ui.add_space(widgets::GAP_LABEL);
-            });
-        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-            close_modal = true;
-        }
+        let outcome = widgets::confirm_dialog(
+            ctx,
+            &widgets::Confirm {
+                title: "Reset GUI defaults",
+                question: "Reset all GUI settings to defaults?",
+                subject: None,
+                detail: "This wipes:\n  - All connections and their API keys\n  - Generation parameters\n  - Selected model\n  - Theme and window preferences\n\nLocal model files on disk are not affected.\nA backup of the current config.json is saved as config.json.before_reset.<timestamp> in the same folder.",
+                action: "Reset",
+            },
+        );
+        let confirmed = outcome == Some(true);
+        let close_modal = outcome == Some(false);
         if confirmed {
             // Snapshot the current config.json to
             // <path>.before_reset.<unix_ts> so an accidental reset

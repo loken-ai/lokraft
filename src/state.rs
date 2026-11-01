@@ -184,6 +184,8 @@ pub struct ChatState {
     pub picker_search: String,
     /// How many times the picker was opened: each opening is a fresh popup area.
     pub picker_opening: u64,
+    /// True while the confirmation to clear the conversation is open.
+    pub clear_confirm_pending: bool,
     /// What the generation parameters panel shows while it is open.
     pub gen_fields: crate::generation::GenFields,
     /// Smart routing: send turns to /conversation, where the server picks the
@@ -1611,6 +1613,8 @@ pub struct MediaState {
     /// A render the user asked to stop, waiting for the owner of the HTTP client to say so
     /// over the API. Taken once sent.
     pub pending_cancel: Option<String>,
+    /// True while the confirmation to forget the earlier results is open.
+    pub history_clear_confirm_pending: bool,
     /// A prompt-enhancement request is in flight (LLM rewriting the prompt).
     pub enhancing_prompt: bool,
     /// The prompt as it was before the last enhancement, for one-click undo.
@@ -1707,6 +1711,7 @@ impl Default for MediaState {
     fn default() -> Self {
         Self {
             render_id: std::sync::Arc::new(std::sync::Mutex::new(None)),
+            history_clear_confirm_pending: false,
             pending_cancel: None,
             video_viewer: VideoViewer::default(),
             generation_abort: None,
@@ -2179,6 +2184,8 @@ pub struct ServerState {
     pub log_filter: LogLevelFilter,
     /// Search filter
     pub log_search: String,
+    /// True while the confirmation to clear the log is open.
+    pub log_clear_confirm_pending: bool,
 }
 
 impl ServerState {

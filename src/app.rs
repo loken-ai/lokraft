@@ -3029,7 +3029,15 @@ impl LLMGuiApp {
                 }
             }
             CLICommand::Delete(model_name) => {
-                if self.models.action_status.is_in_progress() {
+                if self.models.is_loaded(&model_name) {
+                    self.cli.push_output(CLIOutput {
+                        timestamp: crate::timefmt::cli_now(),
+                        command: input,
+                        output: format!("{model_name} is loaded. Unload it before deleting it."),
+                        is_error: true,
+                        ..Default::default()
+                    });
+                } else if self.models.action_status.is_in_progress() {
                     self.cli.push_output(CLIOutput {
                         timestamp: crate::timefmt::cli_now(),
                         command: input,
@@ -3542,9 +3550,7 @@ impl eframe::App for LLMGuiApp {
                                 && (!self.chat.messages.is_empty()
                                     || !self.chat.attached_images.is_empty())
                             {
-                                self.chat.clear_conversation();
-                                self.image_textures.clear();
-                                self.markdown_cache.clear_scrollable();
+                                self.chat.clear_confirm_pending = true;
                             }
                         }
 
