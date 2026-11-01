@@ -88,7 +88,10 @@ fn chat_input_reserved_height(
     } else {
         0.0
     };
+    // The row of actions under the text: its own height, and the gap above it.
+    let actions = spacing.interact_size.y + spacing.item_spacing.y + widgets::GAP_LABEL;
     CHAT_INPUT_BASE_CHROME_PX
+        + actions
         + (input_rows as f32) * CHAT_INPUT_ROW_PX
         + if has_attachments {
             CHAT_INPUT_ATTACH_STRIP_PX
@@ -1246,7 +1249,72 @@ fn render_input_area(
             ui.add_space(widgets::GAP_LABEL);
         }
 
-        // The input row: attach, the text, the counter, Send or Stop.
+        // The text, across the width of the card.
+        // Multi-line input. Enter sends (app.rs), Shift+Enter breaks the
+        // line. It sits on the well: no frame of its own.
+        // Plain Up and Down recall the prompt history when the caret has no line
+        // to move to in that direction, as in a shell; inside a multi-line prompt
+        // they keep moving the caret. Ctrl+Up and Ctrl+Down recall from anywhere.
+        let input_id = ui.make_persistent_id("chat_input");
+        let focused = ui.ctx().memory(|m| m.has_focus(input_id));
+        if focused && !chat.is_generating {
+            let caret = egui::TextEdit::load_state(ui.ctx(), input_id)
+                .and_then(|s| s.cursor.char_range())
+                .map(|r| r.primary.index.0)
+                .unwrap_or(chat.input.chars().count());
+            let (up, down) = ui.input(|i| {
+                let plain = i.modifiers.is_none();
+                (
+                    plain && i.key_pressed(egui::Key::ArrowUp),
+                    plain && i.key_pressed(egui::Key::ArrowDown),
+                )
+            });
+            let recall = (up && ChatState::arrow_recalls_history(&chat.input, caret, true))
+                || (down && ChatState::arrow_recalls_history(&chat.input, caret, false));
+            if recall {
+                let key = if up {
+                    egui::Key::ArrowUp
+                } else {
+                    egui::Key::ArrowDown
+                };
+                ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, key));
+                if up {
+                    chat.history_back();
+                } else {
+                    chat.history_forward();
+                }
+                // The recalled text is edited from its end, as in a shell.
+                let mut state = egui::TextEdit::load_state(ui.ctx(), input_id).unwrap_or_default();
+                let end =
+                    egui::text::CCursor::new(egui::text::CharIndex(chat.input.chars().count()));
+                state
+                    .cursor
+                    .set_char_range(Some(egui::text::CCursorRange::one(end)));
+                state.store(ui.ctx(), input_id);
+            }
+        }
+        let response = ui.add(
+            egui::TextEdit::multiline(&mut chat.input)
+                .frame(egui::Frame::NONE)
+                .desired_width(ui.available_width())
+                .desired_rows(visible_rows)
+                .hint_text(modality.input_hint())
+                .id(input_id)
+                .return_key(Some(egui::KeyboardShortcut::new(
+                    egui::Modifiers::SHIFT,
+                    egui::Key::Enter,
+                ))),
+        );
+        // Editing a recalled prompt detaches from history navigation.
+        if response.changed() {
+            chat.detach_history_if_edited();
+        }
+        if ui.ctx().memory(egui::Memory::focused).is_none() {
+            response.request_focus();
+        }
+
+        // Under it: attach at the left, then the hint, the counter and Send or Stop at the right.
+        ui.add_space(widgets::GAP_LABEL);
         ui.horizontal(|ui| {
             // Attach is for text, vision and ASR models; image-gen, TTS and
             // video are text-only request paths.
@@ -1338,158 +1406,95 @@ fn render_input_area(
                 }
             }
 
-            // Multi-line input. Enter sends (app.rs), Shift+Enter breaks the
-            // line. It sits on the well: no frame of its own.
-            // Plain Up and Down recall the prompt history when the caret has no line
-            // to move to in that direction, as in a shell; inside a multi-line prompt
-            // they keep moving the caret. Ctrl+Up and Ctrl+Down recall from anywhere.
-            let input_id = ui.make_persistent_id("chat_input");
-            let focused = ui.ctx().memory(|m| m.has_focus(input_id));
-            if focused && !chat.is_generating {
-                let caret = egui::TextEdit::load_state(ui.ctx(), input_id)
-                    .and_then(|s| s.cursor.char_range())
-                    .map(|r| r.primary.index.0)
-                    .unwrap_or(chat.input.chars().count());
-                let (up, down) = ui.input(|i| {
-                    let plain = i.modifiers.is_none();
-                    (
-                        plain && i.key_pressed(egui::Key::ArrowUp),
-                        plain && i.key_pressed(egui::Key::ArrowDown),
-                    )
-                });
-                let recall = (up && ChatState::arrow_recalls_history(&chat.input, caret, true))
-                    || (down && ChatState::arrow_recalls_history(&chat.input, caret, false));
-                if recall {
-                    let key = if up {
-                        egui::Key::ArrowUp
-                    } else {
-                        egui::Key::ArrowDown
-                    };
-                    ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, key));
-                    if up {
-                        chat.history_back();
-                    } else {
-                        chat.history_forward();
-                    }
-                    // The recalled text is edited from its end, as in a shell.
-                    let mut state =
-                        egui::TextEdit::load_state(ui.ctx(), input_id).unwrap_or_default();
-                    let end =
-                        egui::text::CCursor::new(egui::text::CharIndex(chat.input.chars().count()));
-                    state
-                        .cursor
-                        .set_char_range(Some(egui::text::CCursorRange::one(end)));
-                    state.store(ui.ctx(), input_id);
-                }
-            }
-            let response = ui.add(
-                egui::TextEdit::multiline(&mut chat.input)
-                    .frame(egui::Frame::NONE)
-                    .desired_width(ui.available_width() - SEND_RESERVE_W)
-                    .desired_rows(visible_rows)
-                    .hint_text(modality.input_hint())
-                    .id(input_id)
-                    .return_key(Some(egui::KeyboardShortcut::new(
-                        egui::Modifiers::SHIFT,
-                        egui::Key::Enter,
-                    ))),
-            );
-            // Editing a recalled prompt detaches from history navigation.
-            if response.changed() {
-                chat.detach_history_if_edited();
-            }
-            if ui.ctx().memory(egui::Memory::focused).is_none() {
-                response.request_focus();
-            }
-
-            // TTS: the character count against the server cap, live.
-            if matches!(modality, ModelModality::AudioTts) {
-                let chars = chat.input.chars().count();
-                let over = chars > TTS_INPUT_MAX_CHARS_CLIENT;
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let mut counter =
-                        text::readout(&format!("{} / {} chars", chars, TTS_INPUT_MAX_CHARS_CLIENT));
-                    if over {
-                        counter = counter.color(theme::error()).strong();
-                    }
-                    let resp = ui.add(egui::Label::new(counter).sense(egui::Sense::hover()));
-                    if over {
-                        resp.on_hover_text(
-                            "TTS input exceeds the 4096-char cap. \
-                             Split into multiple sends or trim before submitting.",
-                        );
-                    }
-                });
-            }
-
-            // Send, gated by chat_send_allowed (the same helper send_chat uses),
-            // or Stop while a reply streams.
-            let input_empty = chat.input.trim().is_empty();
-            let has_attachment = !chat.attached_images.is_empty();
-            let video_gen_blocked = matches!(modality, ModelModality::VideoGen);
-            let is_asr = matches!(modality, ModelModality::AudioAsr);
-            let asr_blocked = is_asr && !has_attachment;
-            let text_blocked = !is_asr && !video_gen_blocked && input_empty;
-            let send_enabled = model_selected
-                && !chat.is_generating
-                && chat_send_allowed(modality, input_empty, has_attachment);
-            let send_tip = if !model_selected {
-                "Pick a model from the dropdown above (or open the \
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // Send, gated by chat_send_allowed (the same helper send_chat uses),
+                // or Stop while a reply streams.
+                let input_empty = chat.input.trim().is_empty();
+                let has_attachment = !chat.attached_images.is_empty();
+                let video_gen_blocked = matches!(modality, ModelModality::VideoGen);
+                let is_asr = matches!(modality, ModelModality::AudioAsr);
+                let asr_blocked = is_asr && !has_attachment;
+                let text_blocked = !is_asr && !video_gen_blocked && input_empty;
+                let send_enabled = model_selected
+                    && !chat.is_generating
+                    && chat_send_allowed(modality, input_empty, has_attachment);
+                let send_tip = if !model_selected {
+                    "Pick a model from the dropdown above (or open the \
                  Models tab to import one) before sending."
-            } else if video_gen_blocked {
-                "Video generation isn't implemented server-side yet.\n\
+                } else if video_gen_blocked {
+                    "Video generation isn't implemented server-side yet.\n\
                  Switch to an image-gen, TTS, or text model to send."
-            } else if chat.is_generating {
-                "Wait for the current response to finish, then Send again."
-            } else if asr_blocked {
-                "Attach an audio file (WAV / MP3 / FLAC / OGG / M4A / AAC) \
+                } else if chat.is_generating {
+                    "Wait for the current response to finish, then Send again."
+                } else if asr_blocked {
+                    "Attach an audio file (WAV / MP3 / FLAC / OGG / M4A / AAC) \
                  above to enable transcription."
-            } else if text_blocked {
-                "Type a message in the input above to enable Send."
-            } else {
-                "Send message\n\n\
+                } else if text_blocked {
+                    "Type a message in the input above to enable Send."
+                } else {
+                    "Send message\n\n\
                  Keyboard:\n  \
                    Enter: send\n  \
                    Shift+Enter: newline\n  \
                    Ctrl+Up / Ctrl+Down: recall prompt history\n  \
                    Ctrl+L: clear conversation\n  \
                    Esc: cancel in-flight generation"
-            };
-            if chat.is_generating {
-                let stop_btn = widgets::danger_button_icon(Icon::Stop, "Stop");
-                if ui
-                    .add(stop_btn)
-                    .on_hover_text(
-                        "Cancel the in-flight generation (or press Esc).\n\
+                };
+                if chat.is_generating {
+                    let stop_btn = widgets::danger_button_icon(Icon::Stop, "Stop");
+                    if ui
+                        .add(stop_btn)
+                        .on_hover_text(
+                            "Cancel the in-flight generation (or press Esc).\n\
                          Already-streamed content is kept; \
                          the next chunk after abort is dropped.",
+                        )
+                        .clicked()
+                        && chat.abort_generation()
+                    {
+                        chat.messages
+                            .push_back(ChatMessage::system("[Generation cancelled by user]"));
+                    }
+                } else if send_enabled {
+                    let send_btn = widgets::primary_button_icon(Icon::Play, "Send");
+                    send_clicked = ui.add(send_btn).on_hover_text(send_tip).clicked();
+                } else {
+                    ui.add_enabled(
+                        false,
+                        egui::Button::image_and_text(
+                            Icon::Play.image(ICON_PT_SMALL, theme::ink_dim()),
+                            "Send",
+                        ),
                     )
-                    .clicked()
-                    && chat.abort_generation()
-                {
-                    chat.messages
-                        .push_back(ChatMessage::system("[Generation cancelled by user]"));
+                    .on_hover_text(send_tip);
                 }
-            } else if send_enabled {
-                let send_btn = widgets::primary_button_icon(Icon::Play, "Send");
-                send_clicked = ui.add(send_btn).on_hover_text(send_tip).clicked();
-            } else {
-                ui.add_enabled(
-                    false,
-                    egui::Button::image_and_text(
-                        Icon::Play.image(ICON_PT_SMALL, theme::ink_dim()),
-                        "Send",
-                    ),
-                )
-                .on_hover_text(send_tip);
-            }
+                ui.label(text::note("Enter to send, Shift+Enter for a new line"));
+                // TTS: the character count against the server cap, live.
+                if matches!(modality, ModelModality::AudioTts) {
+                    let chars = chat.input.chars().count();
+                    let over = chars > TTS_INPUT_MAX_CHARS_CLIENT;
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let mut counter = text::readout(&format!(
+                            "{} / {} chars",
+                            chars, TTS_INPUT_MAX_CHARS_CLIENT
+                        ));
+                        if over {
+                            counter = counter.color(theme::error()).strong();
+                        }
+                        let resp = ui.add(egui::Label::new(counter).sense(egui::Sense::hover()));
+                        if over {
+                            resp.on_hover_text(
+                                "TTS input exceeds the 4096-char cap. \
+                             Split into multiple sends or trim before submitting.",
+                            );
+                        }
+                    });
+                }
+            });
         });
     });
     send_clicked
 }
-
-/// Width kept to the right of the input for the counter and the Send button.
-const SEND_RESERVE_W: f32 = 70.0;
 
 /// A slider of fixed track width followed by its value in a fixed monospace
 /// cell. Returns whether either changed the value.
