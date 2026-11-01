@@ -122,6 +122,9 @@ const STATUS_W: f32 = 84.0;
 const MODEL_READOUT_W: f32 = 200.0;
 const MODEL_READOUT_CHARS: usize = 30;
 const METRICS_W: f32 = 72.0;
+/// How many characters of a connection name the switcher shows, and the width of its list.
+const CONNECTION_CHARS: usize = 24;
+const CONNECTION_MENU_W: f32 = 240.0;
 /// The meter in the tail.
 const METER_SIZE_CHROME: Vec2 = Vec2::new(60.0, 8.0);
 
@@ -130,6 +133,8 @@ pub struct TopBarInput<'a> {
     pub connection: crate::state::ConnectionState,
     pub connection_detail: &'a str,
     pub active_model: Option<&'a str>,
+    pub connections: &'a [crate::connection::Connection],
+    pub active_connection: Option<&'a str>,
     pub loaded: usize,
     pub server_running: bool,
     pub refreshing: bool,
@@ -141,6 +146,42 @@ pub struct TopBarInput<'a> {
 pub struct TopBarOutput {
     pub refresh_clicked: bool,
     pub theme_toggle_clicked: bool,
+    /// A connection picked in the switcher.
+    pub connection_chosen: Option<String>,
+    /// The switcher's link to the connections in Settings was clicked.
+    pub manage_connections_clicked: bool,
+}
+
+/// The active connection as a button. It opens the list of connections, to pick another
+/// one or to reach their settings.
+fn connection_switcher(ui: &mut egui::Ui, input: &TopBarInput, out: &mut TopBarOutput) {
+    let name = input.active_connection.unwrap_or("No connection");
+    let shown = crate::modality::truncate_with_ellipsis(name, CONNECTION_CHARS);
+    let button = ui
+        .add(egui::Button::new(text::value(shown.as_ref())))
+        .on_hover_text("Switch to another server");
+    egui::Popup::menu(&button)
+        .id(ui.make_persistent_id("connection_switcher"))
+        .width(CONNECTION_MENU_W)
+        .show(|ui| {
+            egui::ScrollArea::vertical()
+                .max_height(widgets::popup_max_h(ui))
+                .show(ui, |ui| {
+                    for connection in input.connections {
+                        let is_active = input.active_connection == Some(connection.name.as_str());
+                        let row = ui
+                            .selectable_label(is_active, text::value(&connection.name))
+                            .on_hover_text(&connection.url);
+                        if row.clicked() && !is_active {
+                            out.connection_chosen = Some(connection.name.clone());
+                        }
+                    }
+                    ui.separator();
+                    if ui.button(text::note("Manage connections")).clicked() {
+                        out.manage_connections_clicked = true;
+                    }
+                });
+        });
 }
 
 /// The top bar: a plate of pinned height. Title, status lamp and word,
@@ -151,6 +192,8 @@ pub fn top_bar(ui: &mut egui::Ui, input: &TopBarInput) -> TopBarOutput {
     let mut out = TopBarOutput {
         refresh_clicked: false,
         theme_toggle_clicked: false,
+        connection_chosen: None,
+        manage_connections_clicked: false,
     };
     let margin = egui::Margin::symmetric(widgets::CHROME_MARGIN_X, widgets::CHROME_MARGIN_Y);
 
@@ -168,6 +211,9 @@ pub fn top_bar(ui: &mut egui::Ui, input: &TopBarInput) -> TopBarOutput {
                 widgets::lamp_inline(ui, status.lit, status.color);
                 widgets::fixed_label(ui, STATUS_W, text::label(status.caps))
                     .on_hover_text(input.connection_detail);
+                ui.add_space(CHROME_GAP);
+
+                connection_switcher(ui, input, &mut out);
                 ui.add_space(CHROME_GAP);
 
                 match input.active_model {

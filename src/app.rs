@@ -2323,6 +2323,17 @@ impl LLMGuiApp {
         self.chat.generation_abort = Some(handle.abort_handle());
     }
 
+    /// The server in use changed: what the app shows still describes the old one, so
+    /// connect to the new one and reload.
+    fn server_changed(&mut self) {
+        self.connection_status = ConnectionStatus::connecting();
+        self.toast(
+            ToastSeverity::Success,
+            format!("Connecting to {}", self.config.server_url()),
+        );
+        self.refresh_models();
+    }
+
     fn get_chat_options(&self) -> Option<serde_json::Value> {
         self.config.generation.to_options()
     }
@@ -3317,6 +3328,8 @@ impl eframe::App for LLMGuiApp {
                 connection: self.connection_status.state,
                 connection_detail: &self.connection_status.detail,
                 active_model,
+                connections: &self.config.connections,
+                active_connection: self.config.active_connection.as_deref(),
                 loaded: self.models.loaded_models.len(),
                 server_running,
                 refreshing,
@@ -3327,6 +3340,23 @@ impl eframe::App for LLMGuiApp {
             // Arm the completion toast for this explicit refresh.
             self.refresh_toast_pending = true;
             self.refresh_models();
+        }
+        if let Some(name) = top_out.connection_chosen {
+            let before = (
+                self.config.server_url().to_string(),
+                self.config.api_key().map(str::to_string),
+            );
+            if self.config.activate_connection(&name) {
+                self.config.save();
+                if before.0 != self.config.server_url()
+                    || before.1.as_deref() != self.config.api_key()
+                {
+                    self.server_changed();
+                }
+            }
+        }
+        if top_out.manage_connections_clicked {
+            self.current_section = Section::Settings;
         }
         if top_out.theme_toggle_clicked {
             // Toggle dark ↔ light and re-apply the matching egui
@@ -3626,12 +3656,7 @@ impl eframe::App for LLMGuiApp {
                             if config_before.server_url() != self.config.server_url()
                                 || config_before.api_key() != self.config.api_key()
                             {
-                                self.connection_status = ConnectionStatus::connecting();
-                                self.toast(
-                                    ToastSeverity::Success,
-                                    format!("Connecting to {}", self.config.server_url()),
-                                );
-                                self.refresh_models();
+                                self.server_changed();
                             }
                         }
                     }
