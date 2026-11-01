@@ -46,11 +46,9 @@ const EMPTY_STATE_TOP: f32 = 40.0;
 /// a control.
 const ICON_PT: f32 = 14.0;
 const ICON_PT_SMALL: f32 = 11.0;
-/// Fixed cells of the chrome row: the profile name and the modality.
-const PROFILE_W: f32 = widgets::READOUT_WIDE_W;
+/// Fixed cell of the chrome row: the modality.
 const MODALITY_W: f32 = 64.0;
-/// Characters of a profile or model name shown in the chrome row.
-const PROFILE_CHARS: usize = 20;
+/// Characters of a model name shown in the chrome row.
 const MODEL_CHARS: usize = 25;
 /// The model picker and its popup.
 const MODEL_PICKER_W: f32 = 220.0;
@@ -119,8 +117,6 @@ pub fn render(
     ui: &mut egui::Ui,
     chat: &mut ChatState,
     models: &mut ModelState,
-    selected_profile_name: Option<&String>,
-    profiles: &[crate::config::ApiProfile],
     md_cache: &mut CommonMarkCache,
     image_textures: &mut HashMap<String, TextureHandle>,
 ) -> ChatRenderOutput {
@@ -393,7 +389,7 @@ pub fn render(
 
     ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
         // Header card
-        render_chat_header(ui, chat, selected_profile_name, profiles, models, image_textures, md_cache);
+        render_chat_header(ui, chat, models, image_textures, md_cache);
 
         ui.add_space(12.0);
 
@@ -686,8 +682,6 @@ pub fn render(
 fn render_chat_header(
     ui: &mut egui::Ui,
     chat: &mut ChatState,
-    selected_profile_name: Option<&String>,
-    profiles: &[crate::config::ApiProfile],
     models: &mut ModelState,
     image_textures: &mut HashMap<String, TextureHandle>,
     md_cache: &mut CommonMarkCache,
@@ -695,35 +689,6 @@ fn render_chat_header(
     widgets::chrome_row(ui, |ui| {
         Icon::Chat.show(ui, ICON_PT, theme::ink());
         ui.label(text::title("Chat"));
-        ui.add_space(widgets::GAP_WIDGETS);
-
-        // The profile in a fixed cell; API type and server on hover. A warning
-        // lamp stands in when none is selected.
-        match selected_profile_name.and_then(|name| profiles.iter().find(|p| p.name == *name)) {
-            Some(profile) => {
-                let shown = truncate_with_ellipsis(&profile.name, PROFILE_CHARS);
-                let api_kind = match profile.api_type {
-                    crate::config::ApiType::Loken => "LOKEN",
-                    crate::config::ApiType::Ollama => "Ollama",
-                    crate::config::ApiType::OpenApi => "OpenAPI",
-                };
-                widgets::fixed_label(ui, PROFILE_W, text::mono(shown.as_ref())).on_hover_ui(|ui| {
-                    ui.label(format!(
-                        "Profile: {}\nAPI: {}\nServer: {}",
-                        profile.name, api_kind, profile.server_url,
-                    ));
-                });
-            }
-            None => {
-                widgets::lamp_inline(ui, true, theme::warning());
-                widgets::fixed_label(ui, PROFILE_W, text::note("No profile")).on_hover_text(
-                    "No API profile selected.\n\
-                     Open the Settings tab and pick (or create) a profile under\n\
-                     \"API Profiles\" to define which server + parameters this\n\
-                     chat uses.",
-                );
-            }
-        }
         ui.add_space(widgets::GAP_WIDGETS);
 
         // The model picker. Its lamp says whether the selection is loaded; the

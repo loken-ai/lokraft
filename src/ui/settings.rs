@@ -3,8 +3,7 @@
 //!
 //! Reads/writes: AppConfig, SettingsState, ConfigEditorState
 
-#[allow(unused_imports)]
-use crate::config::{ApiProfile, ApiType, AppConfig};
+use crate::config::AppConfig;
 use crate::config_editor::ConfigEditorState;
 use crate::icons::Icon;
 use crate::settings::{SettingsAction, SettingsState};
@@ -18,12 +17,8 @@ const ICON_PT: f32 = 14.0;
 const SETTINGS_COLUMN_W: f32 = 640.0;
 /// Room kept beside a field for the button that follows it.
 const FIELD_BUTTON_RESERVE: f32 = 70.0;
-/// Width of the profile picker, of the API type cell, and of a confirmation.
-const PROFILE_PICKER_W: f32 = 250.0;
-const API_TYPE_W: f32 = 64.0;
+/// Width of a confirmation.
 const CONFIRM_W: f32 = 380.0;
-/// The profile popup's height.
-const PROFILE_POPUP_H: f32 = 280.0;
 /// The folder picker: its default size, the room kept for its action row,
 /// the least height of its list, the room beside its path field.
 const PICKER_W: f32 = 520.0;
@@ -83,7 +78,7 @@ pub fn render(
                 ui.label(text::value("Reset all GUI settings to defaults?"));
                 ui.add_space(widgets::GAP_WIDGETS);
                 ui.label(text::note(
-                    "This wipes:\n  - All API profiles\n  - Server URL\n  - Selected model\n  - Theme / window preferences",
+                    "This wipes:\n  - All connections and their API keys\n  - Generation parameters\n  - Selected model\n  - Theme / window preferences",
                 ));
                 ui.add_space(widgets::GAP_WIDGETS);
                 widgets::caption_row(ui, "Local model files on disk are not affected.");
@@ -121,7 +116,7 @@ pub fn render(
                 AppConfig::backup_before_reset(dirs.config_dir());
             }
             *config = AppConfig::default();
-            settings_state.url_input = config.server_url.clone();
+            settings_state.connection_form = Default::default();
             config.save();
             settings_state.reset_confirm_pending = false;
         } else if close_modal {
@@ -138,134 +133,8 @@ pub fn render(
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.set_width(ui.available_width());
 
-        // ── Server Connection ──
-        settings_panel(ui, "CONNECTION", |ui| {
-            form_row(ui, "SERVER URL", |ui| {
-                // Apply button width budget so the text field doesn't
-                // hug the right edge of the card.
-                let resp = ui.add(
-                    TextEdit::singleline(&mut settings_state.url_input)
-                        .desired_width(ui.available_width() - FIELD_BUTTON_RESERVE),
-                );
-                let trimmed_input = settings_state.url_input.trim();
-                let non_empty = !trimmed_input.is_empty();
-                let dirty = settings_state.url_input != config.server_url;
-                let can_apply = dirty && non_empty;
-                // Explicit Apply button next to the field. Previously
-                // the URL change was applied only on Enter — easy to
-                // miss for users who edit then mouse away to Quick
-                // Connect or another card, losing the typed value.
-                // Gated on can_apply (= dirty + non-empty) so an empty
-                // field can never clobber the saved server URL.
-                let apply_btn = egui::Button::new(text::value("Apply").color(theme::on_accent()))
-                    .fill(theme::accent());
-                let apply_resp = ui.add_enabled(can_apply, apply_btn);
-                let apply_clicked = apply_resp.clicked();
-                let apply_tip = if dirty && !non_empty {
-                    "URL is empty: type a server URL to enable Apply.".to_string()
-                } else if can_apply {
-                    format!("Apply '{}' as the active server URL", trimmed_input)
-                } else {
-                    String::new()
-                };
-                if !apply_tip.is_empty() {
-                    apply_resp.on_hover_text(apply_tip);
-                }
-                let enter_pressed = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                if (enter_pressed || apply_clicked) && can_apply {
-                    // Auto-prefix http:// when the user types a bare
-                    // host:port (e.g. "localhost:11434"). reqwest
-                    // requires a scheme — without one, every refresh
-                    // would surface the "invalid URL" error from the
-                    // request layer. Trim whitespace too since URLs
-                    // pasted from clipboards often carry trailing \n.
-                    //
-                    // Also strip trailing slashes so the persisted URL
-                    // matches the canonical form Client::new produces
-                    // (a paste like "http://localhost:11435/" would
-                    // otherwise produce double-slash request paths).
-                    // Client::new defenses against this too — fixing
-                    // it here keeps the saved config canonical so the
-                    // input field doesn't visually keep the slash
-                    // after the next round-trip.
-                    let mut url = settings_state.url_input.trim()
-                        .trim_end_matches('/')
-                        .to_string();
-                    if !url.is_empty()
-                        && !url.starts_with("http://")
-                        && !url.starts_with("https://")
-                    {
-                        url = format!("http://{}", url);
-                    }
-                    settings_state.url_input = url.clone();
-                    config.server_url = url;
-                    config.save();
-                }
-            });
-            widgets::caption_row(ui, "The web address where your AI model is running. Press Enter or click Apply to connect. Use the Quick Connect buttons below for common setups.");
-            ui.add_space(widgets::GAP_LABEL);
-
-            // API key. Only needed when the server has `require_auth` on; without this
-            // field, turning authentication on server-side would lock this app out with
-            // a bare 401 and no way to fix it from the UI.
-            form_row(ui, "API KEY", |ui| {
-                let mut key = config.api_key.clone().unwrap_or_default();
-                let resp = ui.add(
-                    TextEdit::singleline(&mut key)
-                        .password(true)
-                        .hint_text("only if the server requires one")
-                        .desired_width(ui.available_width()),
-                );
-                if resp.changed() {
-                    // Blank means absent, so clearing the field really removes the
-                    // credential rather than sending an empty one.
-                    let trimmed = key.trim();
-                    config.api_key =
-                        if trimmed.is_empty() { None } else { Some(trimmed.to_string()) };
-                    // No client invalidation needed: get_client() builds a fresh one per
-                    // request, so the next call already carries the new key.
-                }
-            });
-            widgets::caption_row(ui, "Sent as a bearer token on every request. Leave empty unless the server is configured with require_auth.");
-            ui.add_space(widgets::GAP_LABEL);
-
-            form_row(ui, "STATUS", |ui| {
-                // Colour + label both derive from the ConnectionState
-                // enum — no more `.contains()` sniffing that could
-                // desync the dot from the text.
-                let lit = connection_state != crate::state::ConnectionState::Disconnected;
-                widgets::lamp_inline(ui, lit, connection_state.color());
-                ui.label(text::note(connection_state.label()));
-            });
-
-            ui.add_space(widgets::GAP_LABEL);
-
-            ui.horizontal(|ui| {
-                ui.label(text::label("QUICK CONNECT"));
-                for (label, url) in [
-                    ("LOKEN", crate::config::DEFAULT_LOKEN_URL),
-                    ("OLLAMA", crate::config::DEFAULT_OLLAMA_URL),
-                ] {
-                    // Highlight based on the SAVED server URL, not
-                    // the in-progress input. Typing in the field
-                    // shouldn't desync the active-preset indicator —
-                    // it just means the user is composing a new URL,
-                    // not that they've abandoned the current one.
-                    let is_active = config.server_url == url;
-                    let btn_resp = widgets::selector_pill(ui, label, is_active);
-                    btn_resp.clone().on_hover_ui(|ui| {
-                        // Lazy tooltip — format! only runs when the
-                        // user is actually hovering, not every frame.
-                        ui.label(format!("Use {} ({})", label, url));
-                    });
-                    if btn_resp.clicked() {
-                        settings_state.url_input = url.to_string();
-                        config.server_url = url.to_string();
-                        config.save();
-                    }
-                }
-            });
-        });
+        // ── Connections ──
+        connections_panel(ui, config, settings_state, connection_state);
 
         ui.add_space(widgets::GAP_WIDGETS);
 
@@ -279,166 +148,6 @@ pub fn render(
                         theme::apply(ctx, value);
                         config.save();
                     }
-                }
-            });
-        });
-
-        ui.add_space(widgets::GAP_WIDGETS);
-
-        // ── API Profiles ──
-        settings_panel(ui, "API PROFILES", |ui| {
-            form_row(ui, "ACTIVE PROFILE", |ui| {
-                egui::ComboBox::from_id_salt("profile_selector_settings")
-                    .selected_text(config.selected_profile.as_deref().unwrap_or("(none)"))
-                    .width(ui.available_width().min(PROFILE_PICKER_W))
-                    .show_ui(ui, |ui| {
-                        // Wrap in ScrollArea so a user with many
-                        // profiles (10+ via "+ New Profile" clicks
-                        // over time) doesn't get a popup taller than
-                        // the screen. Matches the chat-header model
-                        // dropdown cap from commit 4353f8f.
-                        //
-                        // Iterate `config.profiles` directly here
-                        // (inside the show_ui closure, which only
-                        // fires when the popup is OPEN) instead of
-                        // pre-cloning a Vec<String> every frame on
-                        // the Settings tab. The pre-clone allocated
-                        // N strings on every render whether or not
-                        // the user opened the dropdown — pure waste
-                        // for a popup that's open <1% of the time.
-                        // selectable_value still needs the per-entry
-                        // String clone (it takes the value by value
-                        // since Option<String>: !Copy), but that
-                        // now only fires inside the open popup.
-                        egui::ScrollArea::vertical()
-                            .max_height(PROFILE_POPUP_H)
-                            .show(ui, |ui| {
-                                // Disjoint borrow: split field borrows
-                                // through the closure (Rust 2021+
-                                // captures by field) so we can mutate
-                                // selected_profile while iterating
-                                // profiles read-only.
-                                let selected = &mut config.selected_profile;
-                                for p in &config.profiles {
-                                    ui.selectable_value(
-                                        selected,
-                                        Some(p.name.clone()),
-                                        &p.name,
-                                    );
-                                }
-                            });
-                    });
-            });
-
-            // Resolve the selected profile's index from its name without
-            // cloning either the Option<String> or the ApiProfile struct
-            // every frame. The render closure below borrows
-            // &config.profiles[profile_idx] for read-only display; the
-            // rare Delete/Edit button clicks set flags that get applied
-            // after the closure exits, releasing the borrow so the
-            // mutations can land.
-            let profile_idx = config
-                .selected_profile
-                .as_ref()
-                .and_then(|name| config.profiles.iter().position(|p| &p.name == name));
-            if let Some(profile_idx) = profile_idx {
-                let mut delete_clicked = false;
-                let mut edit_clicked = false;
-                let profile = &config.profiles[profile_idx];
-                let profiles_count = config.profiles.len();
-                ui.add_space(widgets::GAP_WIDGETS);
-                widgets::well(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        widgets::fixed_label(ui, API_TYPE_W, text::label(&format!("{}", profile.api_type)));
-                        ui.label(text::readout(&profile.server_url));
-                        // Right-anchored Edit + Delete action row.
-                        // Previously there was no way to edit a
-                        // profile or delete one from the inline
-                        // view — the render_edit_modal exists in
-                        // settings.rs but had no trigger surface,
-                        // so users were stuck with the defaults
-                        // applied at + New Profile creation.
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            // Disable Delete when this is the only
-                            // profile — leaving the user with zero
-                            // profiles requires a Reset (or +New)
-                            // to recover and is rarely intended.
-                            let can_delete = profiles_count > 1;
-                            let del_btn = egui::Button::new(text::note("Delete").color(theme::error())).frame(false);
-                            let del_tip = if can_delete {
-                                "Delete this profile"
-                            } else {
-                                "Can't delete the last profile (add another first)"
-                            };
-                            if ui
-                                .add_enabled(can_delete, del_btn)
-                                .on_hover_text(del_tip)
-                                .clicked()
-                            {
-                                delete_clicked = true;
-                            }
-                            ui.add_space(widgets::GAP_LABEL);
-                            let edit_btn = egui::Button::new(text::note("Edit")).frame(false);
-                            if ui.add(edit_btn).on_hover_text("Open the profile editor").clicked() {
-                                edit_clicked = true;
-                            }
-                        });
-                    });
-                    ui.add_space(widgets::GAP_LABEL);
-                    match profile.api_type {
-                        ApiType::Ollama | ApiType::Loken => {
-                            param_grid(ui, &[
-                                ("TEMPERATURE", &format!("{:.2}", profile.ollama_params.temperature)),
-                                ("TOP P", &format!("{:.2}", profile.ollama_params.top_p)),
-                                ("TOP K", &format!("{}", profile.ollama_params.top_k)),
-                                ("CONTEXT", &format!("{}", profile.ollama_params.num_ctx)),
-                            ]);
-                        }
-                        ApiType::OpenApi => {
-                            param_grid(ui, &[
-                                ("TEMPERATURE", &format!("{:.2}", profile.openapi_params.temperature)),
-                                ("MAX TOKENS", &format!("{:?}", profile.openapi_params.max_tokens)),
-                                ("TOP P", &format!("{:.2}", profile.openapi_params.top_p)),
-                            ]);
-                        }
-                    }
-                });
-                // The render-closure borrow on config is dropped here.
-                // Apply any deferred mutations.
-                if delete_clicked {
-                    config.profiles.remove(profile_idx);
-                    config.selected_profile = config
-                        .profiles
-                        .first()
-                        .map(|p| p.name.clone());
-                    config.save();
-                } else if edit_clicked {
-                    settings_state.editing_profile = Some(profile_idx);
-                    settings_state.edit_profile_data =
-                        Some(config.profiles[profile_idx].clone());
-                }
-            }
-
-            ui.add_space(widgets::GAP_WIDGETS);
-            ui.horizontal(|ui| {
-                if ui.add(egui::Button::new(text::note("New profile"))).clicked() {
-                    // Pick a name that doesn't collide with any
-                    // existing profile. The previous
-                    // `format!("Profile {}", len + 1)` could yield
-                    // a duplicate after a middle-delete (e.g.
-                    // delete "Default" from ["Default","Profile 2"]
-                    // leaves ["Profile 2"], len+1 = 2 → collision).
-                    // Helper lives in AppConfig so it has a unit-
-                    // test surface — see config::tests::
-                    // next_profile_name_avoids_collision.
-                    let new_name = AppConfig::next_profile_name(&config.profiles);
-                    config.profiles.push(ApiProfile::new(
-                        new_name.clone(), ApiType::Loken,
-                        crate::config::DEFAULT_LOKEN_URL.to_string(),
-                        "default".to_string(),
-                    ));
-                    config.selected_profile = Some(new_name);
-                    config.save();
                 }
             });
         });
@@ -680,6 +389,149 @@ pub fn render(
 
 // ── Helper components ──
 
+/// The servers: each with what it is and what can be done with it, then the form that
+/// adds one or edits one.
+fn connections_panel(
+    ui: &mut egui::Ui,
+    config: &mut AppConfig,
+    settings_state: &mut SettingsState,
+    connection_state: crate::state::ConnectionState,
+) {
+    settings_panel(ui, "CONNECTIONS", |ui| {
+        widgets::caption_row(
+            ui,
+            "The servers this app can talk to. The active one serves the chat, the studio and the models.",
+        );
+        ui.add_space(widgets::GAP_LABEL);
+
+        let active = config.active_connection.clone();
+        let only_one = config.connections.len() <= 1;
+        let mut activate: Option<String> = None;
+        let mut edit: Option<crate::connection::Connection> = None;
+        let mut remove: Option<String> = None;
+
+        for connection in &config.connections {
+            let is_active = active.as_deref() == Some(connection.name.as_str());
+            widgets::well(ui, |ui| {
+                ui.horizontal(|ui| {
+                    // The lamp of the active connection follows the connection itself.
+                    let lit = is_active
+                        && connection_state != crate::state::ConnectionState::Disconnected;
+                    widgets::lamp_inline(ui, lit, connection_state.color());
+                    ui.label(text::value(&connection.name));
+                    ui.label(text::readout(&connection.url));
+                    if connection.api_key.is_some() {
+                        ui.label(text::note("key set"));
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let del = egui::Button::new(text::note("Delete").color(theme::error()))
+                            .frame(false);
+                        let tip = if only_one {
+                            "Keep at least one connection"
+                        } else {
+                            "Delete this connection"
+                        };
+                        if ui.add_enabled(!only_one, del).on_hover_text(tip).clicked() {
+                            remove = Some(connection.name.clone());
+                        }
+                        ui.add_space(widgets::GAP_LABEL);
+                        if ui
+                            .add(egui::Button::new(text::note("Edit")).frame(false))
+                            .on_hover_text("Change the name, the address or the key")
+                            .clicked()
+                        {
+                            edit = Some(connection.clone());
+                        }
+                        ui.add_space(widgets::GAP_LABEL);
+                        if is_active {
+                            ui.label(text::note("Active"));
+                        } else if ui
+                            .add(egui::Button::new(text::note("Use")))
+                            .on_hover_text("Connect to this server")
+                            .clicked()
+                        {
+                            activate = Some(connection.name.clone());
+                        }
+                    });
+                });
+            });
+            ui.add_space(widgets::GAP_LABEL);
+        }
+
+        if let Some(name) = activate {
+            config.activate_connection(&name);
+            config.save();
+        }
+        if let Some(connection) = edit {
+            settings_state.connection_form.start_edit(&connection);
+        }
+        if let Some(name) = remove {
+            if config.remove_connection(&name).is_ok() {
+                if settings_state.connection_form.editing.as_deref() == Some(name.as_str()) {
+                    settings_state.connection_form.start_new(config);
+                }
+                config.save();
+            }
+        }
+
+        ui.add_space(widgets::GAP_LABEL);
+        let editing = settings_state.connection_form.editing.is_some();
+        ui.label(text::label(if editing {
+            "EDIT CONNECTION"
+        } else {
+            "ADD A CONNECTION"
+        }));
+        ui.add_space(widgets::GAP_LABEL);
+        let form = &mut settings_state.connection_form;
+        form_row(ui, "NAME", |ui| {
+            ui.add(TextEdit::singleline(&mut form.name).desired_width(f32::INFINITY));
+        });
+        form_row(ui, "ADDRESS", |ui| {
+            ui.add(
+                TextEdit::singleline(&mut form.url)
+                    .hint_text(crate::config::DEFAULT_LOKEN_URL)
+                    .desired_width(f32::INFINITY),
+            );
+        });
+        form_row(ui, "API KEY", |ui| {
+            ui.add(
+                TextEdit::singleline(&mut form.api_key)
+                    .password(true)
+                    .hint_text("only if the server requires one")
+                    .desired_width(f32::INFINITY),
+            );
+        });
+        if let Some(why) = form.error {
+            ui.add_space(widgets::GAP_LABEL);
+            ui.label(text::note(why).color(theme::error()));
+        }
+        ui.add_space(widgets::GAP_WIDGETS);
+        let mut submit = false;
+        let mut cancel = false;
+        ui.horizontal(|ui| {
+            let label = if editing { "Save" } else { "Add connection" };
+            let btn = egui::Button::new(text::value(label).color(theme::on_accent()))
+                .fill(theme::accent());
+            if ui.add(btn).clicked() {
+                submit = true;
+            }
+            if editing && ui.add(egui::Button::new(text::note("Cancel"))).clicked() {
+                cancel = true;
+            }
+        });
+        if submit && form.submit(config) {
+            config.save();
+        }
+        if cancel {
+            form.start_new(config);
+        }
+        widgets::caption_row(
+            ui,
+            "The key is sent as a bearer token on every request. Leave it empty unless the server requires one.",
+        );
+    });
+}
+
 /// A section panel in the settings column.
 fn settings_panel(ui: &mut egui::Ui, caps: &str, add_body: impl FnOnce(&mut egui::Ui)) {
     ui.allocate_ui(egui::vec2(SETTINGS_COLUMN_W, 0.0), |ui| {
@@ -701,20 +553,6 @@ fn form_row(ui: &mut egui::Ui, caps: &str, add_content: impl FnOnce(&mut egui::U
             },
         );
         add_content(ui);
-    });
-}
-
-/// Key and value pairs in two columns: the key in capitals, the value in
-/// monospace.
-fn param_grid(ui: &mut egui::Ui, params: &[(&str, &str)]) {
-    ui.columns(2, |cols| {
-        for (i, (key, val)) in params.iter().enumerate() {
-            let col = &mut cols[i % 2];
-            col.horizontal(|ui| {
-                ui.label(text::label(key));
-                ui.label(text::mono(val));
-            });
-        }
     });
 }
 

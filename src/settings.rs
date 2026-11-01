@@ -1,45 +1,83 @@
-//! Settings shared types + modal renderers.
+//! Settings shared types.
 //!
-//! The legacy side-panel `render()` and its 9 helper fns were superseded
-//! by `ui::settings::render` and have been deleted. The server-config
-//! editor is now rendered inline by ui::settings (auto-populates
-//! settings_state.config_editor on demand); the previous standalone
-//! `render_config_editor_modal` wrapper was removed in 3f9fabe because
-//! wiring it as a modal in app.rs caused the editor to render twice.
-//! What remains here:
 //!   - `SettingsState` / `SettingsAction` types (consumed by ui::settings
 //!     and ui::models for action dispatch).
-//!   - `render_edit_modal` — profile edit dialog.
+//!   - `ConnectionForm`, the form that adds or edits a connection.
 
-use eframe::egui;
-use egui::RichText;
-
-use crate::config::{ApiProfile, ApiType, AppConfig};
+use crate::config::AppConfig;
 use crate::config_editor::ConfigEditorState;
+use crate::connection::Connection;
 
 /// Settings panel state for handling edits
 pub struct SettingsState {
-    pub url_input: String,
-    pub editing_profile: Option<usize>,
-    pub edit_profile_data: Option<ApiProfile>,
+    pub connection_form: ConnectionForm,
     pub config_editor: Option<ConfigEditorState>,
     /// True when the user clicked "Reset GUI defaults" but hasn't
     /// confirmed yet. Renders a centered confirmation Window in
     /// ui::settings::render that wipes the AppConfig on Confirm or
-    /// clears the flag on Cancel/Escape. Reset blasts away profiles,
-    /// server URL, and selected_model — destructive enough to warrant
-    /// a guard against accidental clicks.
+    /// clears the flag on Cancel/Escape.
     pub reset_confirm_pending: bool,
 }
 
 impl SettingsState {
-    pub fn new(config: &AppConfig) -> Self {
+    pub fn new(_config: &AppConfig) -> Self {
         Self {
-            url_input: config.server_url.clone(),
-            editing_profile: None,
-            edit_profile_data: None,
+            connection_form: ConnectionForm::default(),
             config_editor: None,
             reset_confirm_pending: false,
+        }
+    }
+}
+
+/// The form that adds a connection, or edits one.
+#[derive(Debug, Default)]
+pub struct ConnectionForm {
+    /// The name of the connection being edited. `None` when the form adds one.
+    pub editing: Option<String>,
+    pub name: String,
+    pub url: String,
+    pub api_key: String,
+    /// Why the last submit was refused.
+    pub error: Option<&'static str>,
+}
+
+impl ConnectionForm {
+    /// Empty the form, ready to add a connection.
+    pub fn start_new(&mut self, config: &AppConfig) {
+        *self = Self {
+            name: config.unused_connection_name(),
+            ..Self::default()
+        };
+    }
+
+    /// Fill the form with a connection to edit.
+    pub fn start_edit(&mut self, connection: &Connection) {
+        *self = Self {
+            editing: Some(connection.name.clone()),
+            name: connection.name.clone(),
+            url: connection.url.clone(),
+            api_key: connection.api_key.clone().unwrap_or_default(),
+            error: None,
+        };
+    }
+
+    /// Add or update the connection the form describes. True when the config changed.
+    /// On a refusal the form keeps what was typed and says why.
+    pub fn submit(&mut self, config: &mut AppConfig) -> bool {
+        let key = Some(self.api_key.as_str());
+        let result = match self.editing.as_deref() {
+            Some(old) => config.update_connection(old, &self.name, &self.url, key),
+            None => config.add_connection(&self.name, &self.url, key),
+        };
+        match result {
+            Ok(()) => {
+                self.start_new(config);
+                true
+            }
+            Err(why) => {
+                self.error = Some(why);
+                false
+            }
         }
     }
 }
@@ -60,250 +98,76 @@ pub enum SettingsAction {
     SaveConfig(crate::config_editor::Config),
 }
 
-/// Render profile edit modal
-pub fn render_edit_modal(
-    ctx: &egui::Context,
-    config: &mut AppConfig,
-    settings_state: &mut SettingsState,
-) {
-    if let Some(edit_idx) = settings_state.editing_profile {
-        if let Some(profile) = settings_state.edit_profile_data.as_mut() {
-            let mut close_modal = false;
-            let mut save_and_close = false;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-            egui::Window::new("Edit Profile")
-                .collapsible(false)
-                .resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                .show(ctx, |ui| {
-                    ui.set_min_width(400.0);
-
-                    // Profile Name
-                    ui.label(RichText::new("Profile Name").strong());
-                    ui.add(
-                        egui::TextEdit::singleline(&mut profile.name).desired_width(f32::INFINITY),
-                    );
-
-                    ui.add_space(8.0);
-
-                    // API Type. selectable_value already mutates profile.api_type
-                    // when the user clicks; the empty `if .clicked() {}` checks
-                    // around each call were no-ops (clippy::if_then_empty).
-                    ui.label(RichText::new("API Type").strong());
-                    ui.horizontal(|ui| {
-                        ui.selectable_value(&mut profile.api_type, ApiType::Loken, "LOKEN");
-                        ui.selectable_value(&mut profile.api_type, ApiType::Ollama, "Ollama");
-                        ui.selectable_value(&mut profile.api_type, ApiType::OpenApi, "OpenAPI");
-                    });
-
-                    ui.add_space(8.0);
-
-                    // Server URL
-                    ui.label(RichText::new("Server URL").strong());
-                    ui.add(
-                        egui::TextEdit::singleline(&mut profile.server_url)
-                            .desired_width(f32::INFINITY)
-                            .hint_text(crate::config::DEFAULT_LOKEN_URL),
-                    );
-
-                    ui.add_space(8.0);
-
-                    // Default Model
-                    ui.label(RichText::new("Default Model").strong());
-                    ui.add(
-                        egui::TextEdit::singleline(&mut profile.model)
-                            .desired_width(f32::INFINITY)
-                            .hint_text("model:tag"),
-                    );
-
-                    ui.add_space(12.0);
-
-                    // API-specific parameters
-                    render_profile_params(ui, profile);
-
-                    ui.add_space(12.0);
-
-                    // Save needs a non-empty profile name — the API
-                    // profile dropdown keys off `name` and an empty
-                    // value renders as an unselectable blank row that
-                    // the user then can't tell apart from other
-                    // profiles. Disable Save with a tooltip pointing
-                    // at the empty field instead of silently letting
-                    // them save garbage.
-                    let name_valid = !profile.name.trim().is_empty();
-
-                    // Buttons. Save on the left so Tab order from
-                    // the form lands on it first (primary action).
-                    ui.horizontal(|ui| {
-                        let save_resp = ui.add_enabled(name_valid, egui::Button::new("Save"));
-                        let tip = if name_valid {
-                            "Save changes and close the modal\n\n\
-                             Keyboard: Enter to save, Esc to cancel"
-                        } else {
-                            "Profile name is required — type a label \
-                             in the field above to enable Save."
-                        };
-                        if save_resp.on_hover_text(tip).clicked() {
-                            save_and_close = true;
-                        }
-                        if ui.button("Cancel").clicked() {
-                            close_modal = true;
-                        }
-                    });
-                });
-
-            // Keyboard shortcuts. Esc closes without saving (standard
-            // dialog convention); Enter saves when the form is valid.
-            // Read after the Window block so they see the same input
-            // frame the modal just consumed — without this, key events
-            // from the TextEdits below leak through to chat-tab key
-            // handlers on the next frame.
-            ctx.input(|i| {
-                if i.key_pressed(egui::Key::Escape) {
-                    close_modal = true;
-                }
-                // Enter saves only when name validation passes, matching
-                // the disabled-button gate. Plain Enter (no Shift/Ctrl)
-                // so multi-line Server-URL paste with Shift+Enter still
-                // works if the underlying TextEdit ever gains multiline.
-                if i.key_pressed(egui::Key::Enter)
-                    && !i.modifiers.any()
-                    && !profile.name.trim().is_empty()
-                {
-                    save_and_close = true;
-                }
-            });
-
-            if save_and_close {
-                if let Some(edited) = settings_state.edit_profile_data.take() {
-                    config.profiles[edit_idx] = edited;
-                    config.save();
-                }
-                settings_state.editing_profile = None;
-                settings_state.edit_profile_data = None;
-            } else if close_modal {
-                settings_state.editing_profile = None;
-                settings_state.edit_profile_data = None;
-            }
+    fn filled(name: &str, url: &str) -> ConnectionForm {
+        ConnectionForm {
+            name: name.into(),
+            url: url.into(),
+            ..ConnectionForm::default()
         }
     }
-}
 
-/// Render profile-specific parameters
-fn render_profile_params(ui: &mut egui::Ui, profile: &mut ApiProfile) {
-    match profile.api_type {
-        ApiType::Ollama => {
-            ui.label(RichText::new("Ollama Parameters").strong());
-            ui.horizontal(|ui| {
-                ui.label("Temperature:");
-                ui.add(
-                    egui::Slider::new(&mut profile.ollama_params.temperature, 0.0..=2.0)
-                        .step_by(0.1),
-                );
-            });
-            ui.horizontal(|ui| {
-                ui.label("Top P:");
-                ui.add(
-                    egui::Slider::new(&mut profile.ollama_params.top_p, 0.0..=1.0).step_by(0.05),
-                );
-            });
-            ui.horizontal(|ui| {
-                ui.label("Top K:");
-                ui.add(egui::DragValue::new(&mut profile.ollama_params.top_k).range(1..=100));
-            });
-            ui.horizontal(|ui| {
-                ui.label("Repeat Penalty:");
-                ui.add(
-                    egui::Slider::new(&mut profile.ollama_params.repeat_penalty, 1.0..=2.0)
-                        .step_by(0.1),
-                );
-            });
-            ui.horizontal(|ui| {
-                ui.label("Context Length:");
-                ui.add(egui::DragValue::new(&mut profile.ollama_params.num_ctx).range(512..=32768));
-            });
-            ui.horizontal(|ui| {
-                ui.label("Max Tokens:");
-                ui.add(
-                    egui::DragValue::new(&mut profile.ollama_params.num_predict).range(-1..=32768),
-                );
-                ui.label(RichText::new("(-1 = unlimited)").weak());
-            });
-            ui.horizontal(|ui| {
-                ui.label("Seed:");
-                ui.add(egui::DragValue::new(&mut profile.ollama_params.seed).range(-1..=i64::MAX));
-                ui.label(RichText::new("(-1 = random)").weak());
-            });
-            ui.horizontal(|ui| {
-                ui.label("Stop:");
-                ui.add(
-                    egui::TextEdit::singleline(&mut profile.ollama_params.stop)
-                        .hint_text("comma-separated, e.g. \\n\\n, ###"),
-                );
-            });
-        }
-        ApiType::OpenApi => {
-            ui.label(RichText::new("OpenAPI Parameters").strong());
-            ui.horizontal(|ui| {
-                ui.label("Temperature:");
-                ui.add(
-                    egui::Slider::new(&mut profile.openapi_params.temperature, 0.0..=2.0)
-                        .step_by(0.1),
-                );
-            });
-            ui.horizontal(|ui| {
-                ui.label("Max Tokens:");
-                let mut max_tokens = profile.openapi_params.max_tokens.unwrap_or(1024);
-                if ui
-                    .add(egui::DragValue::new(&mut max_tokens).range(1..=8192))
-                    .changed()
-                {
-                    profile.openapi_params.max_tokens = Some(max_tokens);
-                }
-            });
-            ui.horizontal(|ui| {
-                ui.label("Top P:");
-                ui.add(
-                    egui::Slider::new(&mut profile.openapi_params.top_p, 0.0..=1.0).step_by(0.05),
-                );
-            });
-            ui.horizontal(|ui| {
-                ui.label("Frequency Penalty:");
-                ui.add(
-                    egui::Slider::new(&mut profile.openapi_params.frequency_penalty, -2.0..=2.0)
-                        .step_by(0.1),
-                );
-            });
-            ui.horizontal(|ui| {
-                ui.label("Presence Penalty:");
-                ui.add(
-                    egui::Slider::new(&mut profile.openapi_params.presence_penalty, -2.0..=2.0)
-                        .step_by(0.1),
-                );
-            });
-        }
-        ApiType::Loken => {
-            ui.label(RichText::new("LLM Server Parameters").strong());
-            ui.horizontal(|ui| {
-                ui.label("Context Length:");
-                ui.add(
-                    egui::DragValue::new(&mut profile.loken_params.context_length)
-                        .range(512..=32768),
-                );
-            });
-            ui.horizontal(|ui| {
-                ui.label("Temperature:");
-                ui.add(
-                    egui::Slider::new(&mut profile.loken_params.temperature, 0.0..=2.0)
-                        .step_by(0.1),
-                );
-            });
-        }
+    #[test]
+    fn a_new_connection_is_added_with_a_clean_address() {
+        let mut config = AppConfig::default();
+        let mut form = filled("Workstation", " 10.0.0.5:11435/ ");
+        assert!(form.submit(&mut config));
+        let added = config
+            .connections
+            .iter()
+            .find(|c| c.name == "Workstation")
+            .expect("added");
+        assert_eq!(added.url, "http://10.0.0.5:11435");
+        assert_eq!(added.api_key, None, "a blank key is no key");
+    }
+
+    #[test]
+    fn a_refused_submit_keeps_what_was_typed_and_says_why() {
+        let mut config = AppConfig::default();
+        let mut form = filled("Local", "http://x:1");
+        assert!(!form.submit(&mut config), "the name is taken");
+        assert_eq!(
+            form.error,
+            Some("Another connection already has this name.")
+        );
+        assert_eq!(form.url, "http://x:1");
+
+        let mut empty = filled("Other", "  ");
+        assert!(!empty.submit(&mut config));
+        assert_eq!(config.connections.len(), 1);
+    }
+
+    #[test]
+    fn renaming_the_active_connection_keeps_it_active() {
+        let mut config = AppConfig::default();
+        let mut form = ConnectionForm::default();
+        form.start_edit(&config.connections[0].clone());
+        form.name = "Home".into();
+        assert!(form.submit(&mut config));
+        assert_eq!(config.active().map(|c| c.name.as_str()), Some("Home"));
+    }
+
+    #[test]
+    fn the_last_connection_stays_and_a_removed_active_one_is_replaced() {
+        let mut config = AppConfig::default();
+        assert!(config.remove_connection("Local").is_err());
+        config.add_connection("Other", "http://o:1", None).unwrap();
+        assert!(config.remove_connection("Local").is_ok());
+        assert_eq!(config.active().map(|c| c.name.as_str()), Some("Other"));
+    }
+
+    #[test]
+    fn a_session_address_is_dropped_when_a_connection_is_chosen() {
+        let mut config = AppConfig {
+            session_url: Some("http://cli:1".into()),
+            ..AppConfig::default()
+        };
+        assert_eq!(config.server_url(), "http://cli:1");
+        assert!(config.activate_connection("Local"));
+        assert_eq!(config.server_url(), crate::config::DEFAULT_LOKEN_URL);
+        assert!(!config.activate_connection("Nope"));
     }
 }
-
-// render_config_editor_modal removed: server config editing happens
-// inline in ui::settings::render reading settings_state.config_editor
-// directly. The modal form was duplicate UI and the auto-init at
-// ui/settings.rs:30 meant it opened every time the Settings panel
-// rendered.

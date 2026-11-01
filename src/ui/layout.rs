@@ -89,7 +89,7 @@ const NAV_ITEMS: &[NavItem] = &[
     NavItem {
         icon: NavIcon::Svg(Icon::Gear),
         label: "Settings",
-        tip: "Server URL, API profiles, theme, config.toml editor.",
+        tip: "Connections, theme, config.toml editor.",
         section: Section::Settings,
     },
     NavItem {

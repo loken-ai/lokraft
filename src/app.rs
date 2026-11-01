@@ -12,7 +12,7 @@ use tracing::{error, info, warn};
 
 use crate::api::{Client, LoadModelResponse, Message, OllamaChatRequest, OllamaChatResponse};
 
-use crate::config::{ApiType, AppConfig};
+use crate::config::AppConfig;
 use crate::log_buffer::LogBuffer;
 use crate::settings::{SettingsAction, SettingsState};
 use crate::state::{
@@ -710,7 +710,7 @@ impl LLMGuiApp {
         };
 
         if let Some(url) = server_url_override {
-            app.config.server_url = url;
+            app.config.session_url = Some(url);
         }
 
         app.chat.smart_auto = app.config.chat_smart_auto;
@@ -734,7 +734,7 @@ impl LLMGuiApp {
     }
 
     fn get_client(&self) -> Client {
-        Client::with_key(&self.config.server_url, self.config.api_key.as_deref())
+        Client::with_key(self.config.server_url(), self.config.api_key())
     }
 
     /// Kick off a Media Studio generation for the currently-selected
@@ -1482,7 +1482,7 @@ impl LLMGuiApp {
         let client = self.get_client();
         let tasks = self.pending_tasks.clone();
         let model = model_name.clone();
-        let is_ollama = self.config.server_url.contains(":11434");
+        let is_ollama = self.config.server_url().contains(":11434");
 
         // Unload all other loaded models first to free GPU memory
         let models_to_unload: Vec<String> = self
@@ -2324,55 +2324,7 @@ impl LLMGuiApp {
     }
 
     fn get_chat_options(&self) -> Option<serde_json::Value> {
-        if let Some(ref profile_name) = self.config.selected_profile {
-            if let Some(profile) = self
-                .config
-                .profiles
-                .iter()
-                .find(|p| p.name == *profile_name)
-            {
-                return match profile.api_type {
-                    ApiType::Ollama => {
-                        let p = &profile.ollama_params;
-                        let mut o = serde_json::json!({
-                            "temperature": p.temperature,
-                            "top_p": p.top_p,
-                            "top_k": p.top_k,
-                            "repeat_penalty": p.repeat_penalty,
-                            "num_ctx": p.num_ctx,
-                            "num_predict": p.num_predict,
-                        });
-                        // seed only when pinned (>=0); -1 means "random each request".
-                        if p.seed >= 0 {
-                            o["seed"] = serde_json::json!(p.seed);
-                        }
-                        // stop: comma-separated → array; skip when empty.
-                        let stops: Vec<String> = p
-                            .stop
-                            .split(',')
-                            .map(|s| s.trim().to_string())
-                            .filter(|s| !s.is_empty())
-                            .collect();
-                        if !stops.is_empty() {
-                            o["stop"] = serde_json::json!(stops);
-                        }
-                        Some(o)
-                    }
-                    ApiType::Loken => Some(serde_json::json!({
-                        "temperature": profile.loken_params.temperature,
-                        "num_ctx": profile.loken_params.context_length,
-                    })),
-                    ApiType::OpenApi => Some(serde_json::json!({
-                        "temperature": profile.openapi_params.temperature,
-                        "max_tokens": profile.openapi_params.max_tokens,
-                        "top_p": profile.openapi_params.top_p,
-                        "frequency_penalty": profile.openapi_params.frequency_penalty,
-                        "presence_penalty": profile.openapi_params.presence_penalty,
-                    })),
-                };
-            }
-        }
-        None
+        self.config.generation.to_options()
     }
 
     pub fn process_pending_tasks(&mut self) {
@@ -2959,7 +2911,7 @@ impl LLMGuiApp {
                     let client = self.get_client();
                     let tasks = self.pending_tasks.clone();
                     let model = model_name.clone();
-                    let is_ollama = self.config.server_url.contains(":11434");
+                    let is_ollama = self.config.server_url().contains(":11434");
                     let model_for_result = model_name.clone();
 
                     self.models.action_status =
@@ -3123,7 +3075,7 @@ impl LLMGuiApp {
 
                 status_lines.push("".to_string());
                 status_lines.push("Connection:".to_string());
-                status_lines.push(format!("  Server URL: {}", self.config.server_url));
+                status_lines.push(format!("  Server URL: {}", self.config.server_url()));
                 status_lines.push(format!("  Status: {}", self.connection_status));
 
                 status_lines.push("".to_string());
@@ -3415,8 +3367,6 @@ impl eframe::App for LLMGuiApp {
                             ui,
                             &mut self.chat,
                             &mut self.models,
-                            self.config.selected_profile.as_ref(),
-                            &self.config.profiles,
                             &mut self.markdown_cache,
                             &mut self.image_textures,
                         );
@@ -3667,11 +3617,13 @@ impl eframe::App for LLMGuiApp {
                             // same?"). Refresh against the new URL the
                             // moment we detect the change so the rest
                             // of the GUI catches up.
-                            if config_before.server_url != self.config.server_url {
+                            if config_before.server_url() != self.config.server_url()
+                                || config_before.api_key() != self.config.api_key()
+                            {
                                 self.connection_status = ConnectionStatus::connecting();
                                 self.toast(
                                     ToastSeverity::Success,
-                                    format!("Connecting to {}", self.config.server_url),
+                                    format!("Connecting to {}", self.config.server_url()),
                                 );
                                 self.refresh_models();
                             }
@@ -3787,7 +3739,6 @@ impl eframe::App for LLMGuiApp {
         }
 
         // Profile Edit Modal (still needed for settings)
-        crate::settings::render_edit_modal(&ctx, &mut self.config, &mut self.settings_state);
 
         // Note: render_config_editor_modal is intentionally NOT called
         // here. The server-configuration editor renders INLINE inside

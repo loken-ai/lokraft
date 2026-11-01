@@ -1,19 +1,15 @@
 //! GUI Configuration Types
 //!
-//! Configuration and profile management for the GUI application.
+//! Configuration of the GUI application: the servers it talks to, what a person
+//! changed, and how it looks.
 
 use serde::{Deserialize, Serialize};
 
-/// Default URL of the local LOKEN binary. Hardcoded into
-/// AppConfig::default(), the seed Default profile, the Settings tab's
-/// Quick Connect chip, and the "+ New Profile" template — keeping
-/// them in lockstep matters because changing one without the others
-/// would make the GUI ship with a default that disagrees with the
-/// Quick Connect button it shows.
+/// Default URL of the local LOKEN binary.
 pub const DEFAULT_LOKEN_URL: &str = "http://localhost:11435";
 
-/// Default URL of a local Ollama server. Used by the seed Ollama
-/// profile + the Settings tab's Ollama Quick Connect chip.
+/// Default URL of a local Ollama server.
+#[allow(dead_code)]
 pub const DEFAULT_OLLAMA_URL: &str = "http://localhost:11434";
 
 /// API type selection
@@ -82,8 +78,6 @@ pub struct OpenApiParams {
     pub temperature: f32,
     pub max_tokens: Option<u32>,
     pub top_p: f32,
-    pub frequency_penalty: f32,
-    pub presence_penalty: f32,
 }
 
 impl Default for OpenApiParams {
@@ -92,8 +86,6 @@ impl Default for OpenApiParams {
             temperature: 0.7,
             max_tokens: Some(1024),
             top_p: 1.0,
-            frequency_penalty: 0.0,
-            presence_penalty: 0.0,
         }
     }
 }
@@ -186,6 +178,28 @@ fn generation_changed_from_defaults(profile: &ApiProfile) -> crate::generation::
     g
 }
 
+/// The canonical form of a server address typed or pasted by a person: trimmed, with a
+/// scheme and without a trailing slash.
+pub fn normalise_url(raw: &str) -> Result<String, &'static str> {
+    let trimmed = raw.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return Err("Enter the address of the server.");
+    }
+    if trimmed.contains(char::is_whitespace) {
+        return Err("An address holds no space.");
+    }
+    let url = if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        trimmed.to_string()
+    } else {
+        format!("http://{trimmed}")
+    };
+    let host = url.split_once("://").map(|(_, rest)| rest).unwrap_or("");
+    if host.is_empty() {
+        return Err("Enter the address of the server.");
+    }
+    Ok(url)
+}
+
 /// Application configuration
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 /// Persisted: it must survive a file written by an OLDER build. The container-level
@@ -194,12 +208,11 @@ fn generation_changed_from_defaults(profile: &ApiProfile) -> crate::generation::
 /// just the new field. That happened.
 #[serde(default)]
 pub struct AppConfig {
+    /// Read only to migrate a file written before connections existed.
+    #[serde(skip_serializing)]
     pub server_url: String,
-    /// API key presented to the server, when it requires one.
-    ///
-    /// Optional because the server's own default is no authentication; a blank value is
-    /// treated as absent so an untouched field costs nothing.
-    #[serde(default)]
+    /// Read only to migrate a file written before connections existed.
+    #[serde(default, skip_serializing)]
     pub api_key: Option<String>,
     pub dark_theme: bool,
     pub selected_model: Option<String>,
@@ -207,8 +220,16 @@ pub struct AppConfig {
     pub window_width: Option<f32>,
     pub window_height: Option<f32>,
     pub window_maximized: Option<bool>,
+    /// Read only to migrate a file written before connections existed.
+    #[serde(skip_serializing)]
     pub profiles: Vec<ApiProfile>,
+    /// Read only to migrate a file written before connections existed.
+    #[serde(skip_serializing)]
     pub selected_profile: Option<String>,
+    /// An address given on the command line. It replaces the active connection's address
+    /// for this run and is never saved.
+    #[serde(skip)]
+    pub session_url: Option<String>,
     /// The servers lokraft can talk to. Empty in a file written before connections
     /// existed, which `adopt_legacy` then fills.
     #[serde(default)]
@@ -250,7 +271,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             api_key: None,
-            server_url: DEFAULT_LOKEN_URL.to_string(),
+            server_url: String::new(),
             dark_theme: true,
             selected_model: None,
             selected_model_source: None,
@@ -260,21 +281,9 @@ impl Default for AppConfig {
             media: None,
             chat_smart_auto: false,
             sidebar_expanded: true,
-            profiles: vec![
-                ApiProfile::new(
-                    "Default".into(),
-                    ApiType::Loken,
-                    DEFAULT_LOKEN_URL.into(),
-                    "default".into(),
-                ),
-                ApiProfile::new(
-                    "Ollama".into(),
-                    ApiType::Ollama,
-                    DEFAULT_OLLAMA_URL.into(),
-                    "llama3.2:latest".into(),
-                ),
-            ],
-            selected_profile: Some("Default".into()),
+            profiles: Vec::new(),
+            selected_profile: None,
+            session_url: None,
             connections: vec![crate::connection::Connection::new(
                 "Local",
                 DEFAULT_LOKEN_URL,
@@ -287,6 +296,106 @@ impl Default for AppConfig {
 }
 
 impl AppConfig {
+    /// The address requests go to: the one given on the command line, else the active
+    /// connection's, else the local default.
+    pub fn server_url(&self) -> &str {
+        self.session_url
+            .as_deref()
+            .or_else(|| self.active().map(|c| c.url.as_str()))
+            .unwrap_or(DEFAULT_LOKEN_URL)
+    }
+
+    /// The key the active connection presents.
+    pub fn api_key(&self) -> Option<&str> {
+        self.active().and_then(|c| c.api_key.as_deref())
+    }
+
+    /// A name for a new connection that no other one uses.
+    pub fn unused_connection_name(&self) -> String {
+        std::iter::once("Server".to_string())
+            .chain((2usize..).map(|i| format!("Server {i}")))
+            .find(|n| !self.connections.iter().any(|c| &c.name == n))
+            .expect("an endless range always yields an unused name")
+    }
+
+    /// Check a name against the other connections. `except` is the connection being edited.
+    fn check_connection_name(&self, name: &str, except: Option<&str>) -> Result<(), &'static str> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("Give the connection a name.");
+        }
+        let taken = self
+            .connections
+            .iter()
+            .any(|c| c.name == name && Some(c.name.as_str()) != except);
+        if taken {
+            return Err("Another connection already has this name.");
+        }
+        Ok(())
+    }
+
+    /// Add a connection. The first one added to an empty list becomes the active one.
+    pub fn add_connection(
+        &mut self,
+        name: &str,
+        url: &str,
+        api_key: Option<&str>,
+    ) -> Result<(), &'static str> {
+        self.check_connection_name(name, None)?;
+        let url = normalise_url(url)?;
+        self.connections
+            .push(crate::connection::Connection::new(name, &url, api_key));
+        if self.active().is_none() {
+            self.active_connection = Some(name.trim().to_string());
+        }
+        Ok(())
+    }
+
+    /// Replace the connection called `old`. The active connection stays active when it is
+    /// the one renamed.
+    pub fn update_connection(
+        &mut self,
+        old: &str,
+        name: &str,
+        url: &str,
+        api_key: Option<&str>,
+    ) -> Result<(), &'static str> {
+        self.check_connection_name(name, Some(old))?;
+        let url = normalise_url(url)?;
+        let Some(slot) = self.connections.iter_mut().find(|c| c.name == old) else {
+            return Err("This connection no longer exists.");
+        };
+        *slot = crate::connection::Connection::new(name, &url, api_key);
+        if self.active_connection.as_deref() == Some(old) {
+            self.active_connection = Some(name.trim().to_string());
+        }
+        Ok(())
+    }
+
+    /// Remove a connection. The last one cannot go. When the active one goes, the first
+    /// remaining one takes its place.
+    pub fn remove_connection(&mut self, name: &str) -> Result<(), &'static str> {
+        if self.connections.len() <= 1 {
+            return Err("Keep at least one connection.");
+        }
+        self.connections.retain(|c| c.name != name);
+        if self.active().is_none() {
+            self.active_connection = self.connections.first().map(|c| c.name.clone());
+            self.session_url = None;
+        }
+        Ok(())
+    }
+
+    /// Make the connection called `name` the active one. False when there is none.
+    pub fn activate_connection(&mut self, name: &str) -> bool {
+        if !self.connections.iter().any(|c| c.name == name) {
+            return false;
+        }
+        self.active_connection = Some(name.to_string());
+        self.session_url = None;
+        true
+    }
+
     /// The connection in use, when the list names one that exists.
     pub fn active(&self) -> Option<&crate::connection::Connection> {
         let name = self.active_connection.as_deref()?;
@@ -339,24 +448,10 @@ impl AppConfig {
         let config_path = directories::ProjectDirs::from("com", "loken", "lokraft")
             .map(|d| d.config_dir().join("config.json"));
 
-        let mut config = match config_path.as_ref() {
+        let config = match config_path.as_ref() {
             Some(path) => Self::load_from_path(path),
             None => AppConfig::default(), // no platform config dir
         };
-
-        // Migration: bump persisted profiles still on the legacy
-        // temperature=0.8 default up to the current 0.15 default
-        // (matches config.toml's server-side temperature). Without
-        // this, users who saved a config before the default change
-        // would silently keep the higher temperature on next load.
-        for profile in &mut config.profiles {
-            if profile.loken_params.temperature == 0.8 {
-                profile.loken_params.temperature = 0.15;
-            }
-            if profile.ollama_params.temperature == 0.8 {
-                profile.ollama_params.temperature = 0.15;
-            }
-        }
 
         // Auto-save migrated config
         config.save();
@@ -461,24 +556,6 @@ impl AppConfig {
         }
     }
 
-    /// Pick the lowest unused "Profile N" name given the existing
-    /// profile list. Used by the Settings tab's "+ New Profile"
-    /// button so a delete-from-middle-then-add sequence can't
-    /// produce a duplicate name (which would violate the
-    /// unique-names invariant the default test pins).
-    ///
-    /// Probes upward from 2 (existing seed profiles are "Default"
-    /// and "Ollama", so "Profile 1" would just look weird as a
-    /// first user-created profile). The probe is bounded only by
-    /// the input range; in practice the loop exits in O(N) where N
-    /// is the number of existing profiles.
-    pub fn next_profile_name(existing: &[ApiProfile]) -> String {
-        (2usize..)
-            .map(|i| format!("Profile {i}"))
-            .find(|name| !existing.iter().any(|p| &p.name == name))
-            .expect("infinite range always yields an unused name")
-    }
-
     /// Snapshot the existing `config.json` to
     /// `<path>.before_reset.<unix_ts>` before a destructive reset
     /// overwrites it with defaults. Symmetric with the corrupt-file
@@ -530,69 +607,6 @@ impl AppConfig {
 #[allow(clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn app_config_default_has_two_profiles_with_unique_names() {
-        // AppConfig::default seeds two profiles (Default for LOKEN
-        // and Ollama for vanilla Ollama). Pin both so a future change
-        // to remove or rename either can't silently break the
-        // first-run UX where the Settings tab expects to find them.
-        let cfg = AppConfig::default();
-        assert_eq!(cfg.profiles.len(), 2, "default seeds exactly 2 profiles");
-
-        let names: Vec<&str> = cfg.profiles.iter().map(|p| p.name.as_str()).collect();
-        assert!(
-            names.contains(&"Default"),
-            "Default profile missing — names: {names:?}"
-        );
-        assert!(
-            names.contains(&"Ollama"),
-            "Ollama profile missing — names: {names:?}"
-        );
-
-        // Profiles must have distinct names (the Settings dropdown
-        // keys by name; a duplicate would mask one of them).
-        let mut sorted = names.clone();
-        sorted.sort_unstable();
-        sorted.dedup();
-        assert_eq!(
-            sorted.len(),
-            names.len(),
-            "default profile names must be unique"
-        );
-
-        // selected_profile must point at one of them so the GUI
-        // doesn't start without an active profile.
-        let selected = cfg
-            .selected_profile
-            .as_deref()
-            .expect("default config must have selected_profile set");
-        assert!(
-            names.contains(&selected),
-            "selected_profile '{selected}' not in names {names:?}"
-        );
-    }
-
-    #[test]
-    fn app_config_default_endpoints_match_well_known_ports() {
-        // Default's LOKEN URL must point at LOKEN's canonical
-        // port (11435) so first-run users hit a server that exists if
-        // they followed the README. Ollama profile's URL must point at
-        // the upstream Ollama port (11434).
-        let cfg = AppConfig::default();
-        let by_name = |n: &str| cfg.profiles.iter().find(|p| p.name == n).unwrap();
-
-        assert!(
-            by_name("Default").server_url.ends_with(":11435"),
-            "Default profile must target the loken port 11435, got '{}'",
-            by_name("Default").server_url
-        );
-        assert!(
-            by_name("Ollama").server_url.ends_with(":11434"),
-            "Ollama profile must target Ollama port 11434 — got '{}'",
-            by_name("Ollama").server_url
-        );
-    }
 
     #[test]
     fn api_type_display_strings_are_stable_for_dropdown() {
@@ -672,39 +686,6 @@ mod tests {
             p.max_tokens.unwrap_or(0) > 0,
             "openapi max_tokens must default to >0"
         );
-        // Frequency / presence penalty in OpenAI's [-2, 2] band.
-        assert!((-2.0..=2.0).contains(&p.frequency_penalty));
-        assert!((-2.0..=2.0).contains(&p.presence_penalty));
-    }
-
-    #[test]
-    fn api_profile_new_initializes_all_param_categories() {
-        // ApiProfile::new must initialize all 3 nested params
-        // (ollama_params / openapi_params / loken_params) so the
-        // Settings tab's param sliders never get None back when the
-        // user switches profiles. Catches a future field add to
-        // ApiProfile that forgets the new default wire-up.
-        let p = ApiProfile::new(
-            "Custom".into(),
-            ApiType::Loken,
-            "http://localhost:9999".into(),
-            "test-model".into(),
-        );
-        assert_eq!(p.name, "Custom");
-        assert_eq!(p.api_type, ApiType::Loken);
-        assert_eq!(p.server_url, "http://localhost:9999");
-        assert_eq!(p.model, "test-model");
-        // Defaults of each nested param block. We don't check
-        // every field — just confirm each block is present + the
-        // post-migration temperature (0.15) is in place.
-        assert!(
-            (p.ollama_params.temperature - 0.15).abs() < 1e-6,
-            "ollama temperature default must be 0.15 (post-migration)"
-        );
-        assert!(
-            (p.loken_params.temperature - 0.15).abs() < 1e-6,
-            "LOKEN temperature default must be 0.15 (post-migration)"
-        );
     }
 
     #[test]
@@ -717,9 +698,9 @@ mod tests {
         let original = AppConfig::default();
         let json = serde_json::to_string_pretty(&original).expect("serialize");
         let back: AppConfig = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(back.profiles.len(), original.profiles.len());
-        assert_eq!(back.selected_profile, original.selected_profile);
-        assert_eq!(back.server_url, original.server_url);
+        assert_eq!(back.connections, original.connections);
+        assert_eq!(back.active_connection, original.active_connection);
+        assert_eq!(back.generation, original.generation);
         assert_eq!(back.dark_theme, original.dark_theme);
     }
 
@@ -760,6 +741,7 @@ mod tests {
     fn a_config_that_already_has_connections_is_left_alone() {
         let mut cfg = AppConfig::default();
         cfg.server_url = "http://elsewhere:1".into();
+        cfg.api_key = Some("other".into());
         let before = cfg.clone();
         cfg.adopt_legacy();
         assert_eq!(cfg, before);
@@ -810,8 +792,11 @@ mod tests {
         // equal config. Guards against accidental lossy serde.
         let raw = std::fs::read_to_string(&path).expect("read back saved file");
         let parsed: AppConfig = serde_json::from_str(&raw).expect("parse saved");
-        assert_eq!(parsed.profiles.len(), cfg.profiles.len());
-        assert_eq!(parsed.selected_profile, cfg.selected_profile);
+        assert_eq!(parsed.connections, cfg.connections);
+        assert!(
+            !raw.contains("selected_profile") && !raw.contains("\"profiles\""),
+            "the old fields are no longer written"
+        );
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -854,9 +839,7 @@ mod tests {
         assert!(!path.exists());
 
         let loaded = AppConfig::load_from_path(&path);
-        // Default seeds 2 profiles (Default + Ollama) — same shape
-        // the pre-existing default test pins.
-        assert_eq!(loaded.profiles.len(), 2);
+        assert_eq!(loaded, AppConfig::default());
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -868,14 +851,17 @@ mod tests {
         // silently drop user fields on the next launch.
         let dir = fresh_tempdir("roundtrip");
         let mut cfg = AppConfig::default();
-        cfg.server_url = "http://example.com:11436".to_string();
+        cfg.add_connection("Remote", "example.com:11436", Some("k"))
+            .expect("add");
+        cfg.activate_connection("Remote");
         cfg.dark_theme = !cfg.dark_theme;
         cfg.save_to_dir(&dir).expect("seed disk");
 
         let loaded = AppConfig::load_from_path(&dir.join("config.json"));
-        assert_eq!(loaded.server_url, "http://example.com:11436");
+        assert_eq!(loaded.server_url(), "http://example.com:11436");
+        assert_eq!(loaded.api_key(), Some("k"));
         assert_eq!(loaded.dark_theme, cfg.dark_theme);
-        assert_eq!(loaded.profiles.len(), cfg.profiles.len());
+        assert_eq!(loaded.connections.len(), 2);
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -898,7 +884,7 @@ mod tests {
 
         let loaded = AppConfig::load_from_path(&path);
         // Fell back to defaults (didn't panic, didn't return garbage).
-        assert_eq!(loaded.profiles.len(), 2);
+        assert_eq!(loaded, AppConfig::default());
 
         // A .broken.<ts> backup exists alongside the original, and
         // contains the exact bogus bytes the user typed.
@@ -923,57 +909,6 @@ mod tests {
         );
 
         std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn next_profile_name_starts_from_profile_2_with_default_seed() {
-        // Default seeds 2 profiles ("Default", "Ollama"). First
-        // user-created profile should be "Profile 2" — neither
-        // "Profile 1" (would look odd as the first user profile
-        // when 2 seeds already exist) nor a collision with
-        // anything.
-        let existing = AppConfig::default().profiles;
-        assert_eq!(AppConfig::next_profile_name(&existing), "Profile 2");
-    }
-
-    #[test]
-    fn next_profile_name_avoids_collision_after_middle_delete() {
-        // The headline bug the helper exists to fix: if the user
-        // deletes "Default" from ["Default", "Profile 2"], the
-        // previous `format!("Profile {}", len + 1)` returned
-        // "Profile 2" — duplicating the existing name. The helper
-        // probes upward until it finds an unused slot.
-        let mut cfg = AppConfig::default();
-        cfg.profiles.clear();
-        cfg.profiles.push(ApiProfile::new(
-            "Profile 2".to_string(),
-            ApiType::Loken,
-            "http://localhost:11435".to_string(),
-            "default".to_string(),
-        ));
-
-        let next = AppConfig::next_profile_name(&cfg.profiles);
-        assert_eq!(
-            next, "Profile 3",
-            "must skip the existing Profile 2 instead of duplicating"
-        );
-    }
-
-    #[test]
-    fn next_profile_name_skips_gaps() {
-        // ["Profile 2", "Profile 5"] — next slot is 3, not 6.
-        // Lowest unused wins.
-        let mut cfg = AppConfig::default();
-        cfg.profiles.clear();
-        for n in [2usize, 5] {
-            cfg.profiles.push(ApiProfile::new(
-                format!("Profile {n}"),
-                ApiType::Loken,
-                "http://localhost:11435".to_string(),
-                "default".to_string(),
-            ));
-        }
-        assert_eq!(AppConfig::next_profile_name(&cfg.profiles), "Profile 3");
     }
 
     #[test]
@@ -1071,8 +1006,8 @@ mod tests {
         // The values from the file survived - a fallback to defaults would lose them,
         // which is exactly the failure and would leave `selected_model` empty.
         assert_eq!(loaded.selected_model.as_deref(), Some("qwen3:8b"));
-        assert_eq!(loaded.profiles.len(), 1);
-        assert_eq!(loaded.profiles[0].name, "Default");
+        assert_eq!(loaded.connections.len(), 1);
+        assert_eq!(loaded.server_url(), "http://127.0.0.1:11435");
         let media = loaded.media.expect("the media section survived");
         assert_eq!(media.prompt, "a cat");
         let image = media.image.expect("the image section survived");
@@ -1101,7 +1036,7 @@ mod tests {
         std::fs::write(&path, b"").expect("seed empty file");
 
         let loaded = AppConfig::load_from_path(&path);
-        assert_eq!(loaded.profiles.len(), 2);
+        assert_eq!(loaded, AppConfig::default());
 
         let backups: Vec<_> = std::fs::read_dir(&dir)
             .expect("read tempdir")

@@ -82,7 +82,7 @@ fn shoot_skin(
                 LogBuffer::new(256),
             );
             app.config = AppConfig::default();
-            app.config.server_url = NO_SERVER.to_string();
+            app.config.session_url = Some(NO_SERVER.to_string());
             app.config.dark_theme = dark;
             crate::theme::apply(&cc.egui_ctx, dark);
             app.current_section = section;
