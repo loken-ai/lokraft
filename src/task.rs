@@ -49,7 +49,7 @@ pub enum TaskResult {
     MediaProgress(String, u64, u64, Option<String>),
     /// Media Studio voice list fetched (GET /v1/audio/voices).
     MediaVoicesFetched(Vec<String>),
-    /// What a video render is expected to cost, from `POST /v1/video/plan`.
+    /// What a video render is expected to cost, from `POST /api/video/plan`.
     ///
     /// Tagged with the settings signature it was asked for, because the settings can move
     /// while the answer is in flight - an untagged reply would be shown against a frame

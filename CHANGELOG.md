@@ -4,6 +4,10 @@ All notable changes to lokraft. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+### Fixed
+
+- studio: show the video cost estimate.
+
 ### Removed
 
 - chat: remove the layer mode toggle, which the server ignored.

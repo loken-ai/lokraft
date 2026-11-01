@@ -1671,7 +1671,7 @@ pub struct MediaState {
     pub history: Vec<MediaHistoryEntry>,
 
     /// Expected denoising time for the CURRENT video settings, in seconds, from
-    /// `/v1/video/plan`. `None` = not answered yet, and the tab shows nothing: a video
+    /// `/api/video/plan`. `None` = not answered yet, and the tab shows nothing: a video
     /// render is the one place where the wait can be an afternoon, and a zero standing in
     /// for "unknown" is the reading that costs someone that afternoon.
     pub video_estimate: Option<f32>,

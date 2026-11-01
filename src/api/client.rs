@@ -23,6 +23,9 @@ pub struct Client {
 /// a slow denoising step on a busy machine.
 const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(180);
 
+/// The server's route for the cost of a video render.
+const VIDEO_PLAN_PATH: &str = "/api/video/plan";
+
 /// The request body for an image render, built once so the streaming and non-streaming
 /// transports cannot drift on which controls they carry.
 ///
@@ -894,7 +897,7 @@ impl Client {
         Ok(())
     }
 
-    /// Ask what a video render will cost BEFORE starting one: `POST /v1/video/plan`.
+    /// Ask what a video render will cost BEFORE starting one: `POST /api/video/plan`.
     ///
     /// The body either describes an intent (`seconds`, `quality`, `model`) and lets the
     /// server choose the settings, or states settings already chosen (`width`, `height`,
@@ -909,7 +912,7 @@ impl Client {
         &self,
         body: serde_json::Value,
     ) -> Result<serde_json::Value, ClientError> {
-        let url = format!("{}/v1/video/plan", self.base_url);
+        let url = format!("{}{VIDEO_PLAN_PATH}", self.base_url);
         let response = self
             .http_client
             .post(&url)
@@ -920,7 +923,7 @@ impl Client {
             .timeout(Duration::from_secs(10))
             .send()
             .await?;
-        let response = Self::check_status(response, "/v1/video/plan").await?;
+        let response = Self::check_status(response, VIDEO_PLAN_PATH).await?;
         Ok(response.json().await?)
     }
 
@@ -1079,6 +1082,40 @@ impl From<reqwest::Error> for ClientError {
 
 #[cfg(test)]
 mod tests {
+
+    /// The cost estimate must ask the route the server serves.
+    ///
+    /// A route the server does not know answers 404, the estimate stays hidden and
+    /// nothing tells the user why.
+    #[test]
+    fn the_video_estimate_asks_the_route_the_server_serves() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let base = format!("http://{}", listener.local_addr().expect("addr"));
+        let server = std::thread::spawn(move || {
+            let (mut conn, _) = listener.accept().expect("accept");
+            let mut buf = [0u8; 4096];
+            let n = conn.read(&mut buf).expect("read");
+            let body = r#"{"estimated_seconds":12.5}"#;
+            let reply = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            conn.write_all(reply.as_bytes()).expect("write");
+            String::from_utf8_lossy(&buf[..n])
+                .lines()
+                .next()
+                .unwrap_or("")
+                .to_string()
+        });
+        let rt = tokio::runtime::Runtime::new().expect("runtime");
+        let plan = rt
+            .block_on(Client::new(&base).plan_video(serde_json::json!({ "frames": 1 })))
+            .expect("plan");
+        assert_eq!(plan["estimated_seconds"], 12.5);
+        let request_line = server.join().expect("server thread");
+        assert_eq!(request_line, "POST /api/video/plan HTTP/1.1");
+    }
 
     /// A blank key must be treated as absent, not sent as `Bearer `.
     ///
