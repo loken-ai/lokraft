@@ -24,6 +24,7 @@ All notable changes to lokraft. The format follows [Keep a Changelog](https://ke
 
 ### Fixed
 
+- settings: fit the fields to a narrow window.
 - chat: send the whole conversation to a text model.
 - studio: show the video cost estimate.
 - terminal: report an unload once the server has answered.

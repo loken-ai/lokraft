@@ -129,7 +129,7 @@ pub fn render(
         if let Some(editor) = settings_state.config_editor.as_mut() {
             // Error banner
             if let Some(error) = &editor.error_message {
-                ui.allocate_ui(egui::vec2(SETTINGS_COLUMN_W, 0.0), |ui| {
+                ui.allocate_ui(egui::vec2(SETTINGS_COLUMN_W.min(ui.available_width()), 0.0), |ui| {
                     widgets::panel_frame(ui, |ui| {
                         ui.horizontal(|ui| {
                             widgets::lamp_inline(ui, true, theme::error());
@@ -526,9 +526,12 @@ fn connections_panel(
 
 /// A section panel in the settings column.
 fn settings_panel(ui: &mut egui::Ui, caps: &str, add_body: impl FnOnce(&mut egui::Ui)) {
-    ui.allocate_ui(egui::vec2(SETTINGS_COLUMN_W, 0.0), |ui| {
-        widgets::section_panel(ui, caps, add_body);
-    });
+    ui.allocate_ui(
+        egui::vec2(SETTINGS_COLUMN_W.min(ui.available_width()), 0.0),
+        |ui| {
+            widgets::section_panel(ui, caps, add_body);
+        },
+    );
 }
 
 /// A form row: the label in capitals in a column of fixed width, right
