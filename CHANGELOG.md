@@ -6,6 +6,7 @@ All notable changes to lokraft. The format follows [Keep a Changelog](https://ke
 
 ### Fixed
 
+- chat: send the whole conversation to a text model.
 - studio: show the video cost estimate.
 
 ### Removed

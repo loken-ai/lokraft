@@ -1956,14 +1956,22 @@ impl LLMGuiApp {
             }
         }
 
+        // A text model answers from the whole visible conversation. The other kinds
+        // read the current prompt alone.
+        let outgoing = if modality_for_send == crate::modality::ModelModality::Text {
+            chat_history_messages(&self.chat.messages, &attached_images)
+        } else if attached_images.is_empty() {
+            vec![Message::new("user".to_string(), prompt)]
+        } else {
+            vec![Message::with_images(
+                "user".to_string(),
+                prompt,
+                attached_images,
+            )]
+        };
+
         let handle = self.rt.spawn(async move {
-            // Build message with optional images for vision models
-            let message = if attached_images.is_empty() {
-                Message::new("user".to_string(), prompt)
-            } else {
-                Message::with_images("user".to_string(), prompt, attached_images)
-            };
-            let mut request = OllamaChatRequest::new(model, vec![message]);
+            let mut request = OllamaChatRequest::new(model, outgoing);
             request.stream = true;
             request.options = options;
 
@@ -3776,6 +3784,30 @@ impl eframe::App for LLMGuiApp {
     }
 }
 
+/// The turns a text model is sent: every visible user and assistant turn in order.
+/// The last turn is the one just typed, and carries the attached images.
+fn chat_history_messages(
+    messages: &std::collections::VecDeque<crate::state::ChatMessage>,
+    attached_images: &[String],
+) -> Vec<Message> {
+    let turns: Vec<&crate::state::ChatMessage> = messages
+        .iter()
+        .filter(|m| (m.role == "user" || m.role == "assistant") && !m.content.is_empty())
+        .collect();
+    let last = turns.len().saturating_sub(1);
+    turns
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            if i == last && !attached_images.is_empty() {
+                Message::with_images(m.role.clone(), m.content.clone(), attached_images.to_vec())
+            } else {
+                Message::new(m.role.clone(), m.content.clone())
+            }
+        })
+        .collect()
+}
+
 /// Insert `value` at `key` in the chat-request `options` object.
 ///
 /// Used by `send_chat` to thread image-gen / TTS overrides into the
@@ -4010,6 +4042,47 @@ mod tests {
         assert!(out.files[2].0.ends_with(".gif"));
         // Decoded, not left as base64.
         assert_eq!(out.files[0].1, b"ABC");
+    }
+
+    fn turn(role: &str, content: &str) -> crate::state::ChatMessage {
+        crate::state::ChatMessage {
+            role: role.to_string(),
+            content: content.to_string(),
+            timestamp: String::new(),
+            timing: None,
+            images: Vec::new(),
+            generated_images: Vec::new(),
+            generated_audios: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_text_model_is_sent_the_whole_visible_conversation() {
+        let messages: std::collections::VecDeque<_> = [
+            turn("user", "first question"),
+            turn("assistant", "first answer"),
+            turn("system", "a notice the model must not see"),
+            turn("user", "second question"),
+        ]
+        .into();
+        let sent = chat_history_messages(&messages, &[]);
+        let roles: Vec<&str> = sent.iter().map(|m| m.role.as_str()).collect();
+        assert_eq!(roles, ["user", "assistant", "user"]);
+        assert_eq!(sent[2].content, "second question");
+    }
+
+    #[test]
+    fn only_the_last_turn_carries_the_attached_images() {
+        let messages: std::collections::VecDeque<_> = [
+            turn("user", "earlier"),
+            turn("assistant", "reply"),
+            turn("user", "look"),
+        ]
+        .into();
+        let sent = chat_history_messages(&messages, &["aW1n".to_string()]);
+        assert!(sent[0].images.is_none());
+        assert!(sent[1].images.is_none());
+        assert_eq!(sent[2].images.as_deref(), Some(&["aW1n".to_string()][..]));
     }
 
     #[test]
