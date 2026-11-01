@@ -1560,6 +1560,12 @@ impl LLMGuiApp {
         });
     }
 
+    /// Settle the terminal line that announced this unload, if the unload came from the
+    /// terminal.
+    fn finish_unload_line(&mut self, model_name: &str, text: String, is_error: bool) {
+        settle_unload_line(&mut self.cli.outputs, model_name, text, is_error);
+    }
+
     pub fn delete_model(&mut self, model_name: String) {
         if self.models.action_status.is_in_progress() {
             return;
@@ -2830,6 +2836,11 @@ impl LLMGuiApp {
                             // Remove from local loaded list
                             self.models.loaded_models.retain(|m| m != &model_name);
                             self.models.action_status = ActionStatus::Idle;
+                            self.finish_unload_line(
+                                &model_name,
+                                format!("Model {model_name} unloaded."),
+                                false,
+                            );
                             self.toast(
                                 ToastSeverity::Success,
                                 format!("Model {} unloaded", model_name),
@@ -2838,6 +2849,11 @@ impl LLMGuiApp {
                         }
                         Err(e) => {
                             self.models.action_status = ActionStatus::Idle;
+                            self.finish_unload_line(
+                                &model_name,
+                                format!("Failed to unload {model_name}: {e}"),
+                                true,
+                            );
                             self.toast(
                                 ToastSeverity::Error,
                                 format!("Failed to unload {}: {}", model_name, e),
@@ -2990,7 +3006,8 @@ impl LLMGuiApp {
                     self.cli.push_output(CLIOutput {
                         timestamp: crate::timefmt::cli_now(),
                         command: input,
-                        output: format!("Model {} unloaded.", model_name),
+                        output: unloading_line(&model_name),
+                        in_progress: true,
                         ..Default::default()
                     });
                     // Refresh hardware topology after model unload
@@ -3787,6 +3804,31 @@ impl eframe::App for LLMGuiApp {
     }
 }
 
+/// What the terminal shows while an unload is waiting on the server.
+fn unloading_line(model_name: &str) -> String {
+    format!("Unloading model: {model_name}...")
+}
+
+/// Replace the pending "unloading" line of `model_name` with its outcome. A line that
+/// is not pending, or belongs to another model, is left alone.
+fn settle_unload_line(
+    outputs: &mut [crate::state::CLIOutput],
+    model_name: &str,
+    text: String,
+    is_error: bool,
+) {
+    let pending = unloading_line(model_name);
+    if let Some(line) = outputs
+        .iter_mut()
+        .rev()
+        .find(|o| o.in_progress && o.output == pending)
+    {
+        line.output = text;
+        line.is_error = is_error;
+        line.in_progress = false;
+    }
+}
+
 /// The turns a text model is sent: every visible user and assistant turn in order.
 /// The last turn is the one just typed, and carries the attached images.
 fn chat_history_messages(
@@ -4045,6 +4087,31 @@ mod tests {
         assert!(out.files[2].0.ends_with(".gif"));
         // Decoded, not left as base64.
         assert_eq!(out.files[0].1, b"ABC");
+    }
+
+    fn cli_line(output: &str, in_progress: bool) -> crate::state::CLIOutput {
+        crate::state::CLIOutput {
+            output: output.to_string(),
+            in_progress,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn an_unload_line_settles_only_when_the_server_answers() {
+        let mut outputs = vec![
+            cli_line(&unloading_line("other"), true),
+            cli_line(&unloading_line("m"), true),
+        ];
+        settle_unload_line(&mut outputs, "m", "Model m unloaded.".into(), false);
+        assert!(outputs[0].in_progress, "another model's line stays pending");
+        assert!(!outputs[1].in_progress);
+        assert_eq!(outputs[1].output, "Model m unloaded.");
+
+        let mut failed = vec![cli_line(&unloading_line("m"), true)];
+        settle_unload_line(&mut failed, "m", "Failed to unload m: busy".into(), true);
+        assert!(failed[0].is_error);
+        assert!(!failed[0].in_progress);
     }
 
     fn turn(role: &str, content: &str) -> crate::state::ChatMessage {
