@@ -24,8 +24,31 @@ const MARK_PT: f32 = 16.0;
 const ROW_PAD_X: i8 = 12;
 const ROW_PAD_Y: i8 = 6;
 
-/// The commands the chrome row names.
-const COMMANDS: [&str; 5] = ["list", "load", "unload", "pull", "ps"];
+/// Every command the terminal runs, with what it does.
+/// The chrome row, the empty state and `help` all read this table.
+pub(crate) const COMMAND_HELP: [(&str, &str); 9] = [
+    ("list", "List available models"),
+    ("loaded", "List loaded models"),
+    ("load <model>", "Load a model into memory"),
+    ("unload <model>", "Unload a model from memory"),
+    ("pull <model>", "Pull or download a model"),
+    ("delete <model>", "Delete a model"),
+    ("ps", "Show the connection and the loaded models"),
+    ("clear", "Clear the output"),
+    ("help", "Show this list"),
+];
+
+/// The text `help` prints.
+pub(crate) fn help_text() -> String {
+    let mut text = String::from("Available commands:\n");
+    for (command, description) in COMMAND_HELP {
+        text.push_str(&format!("  {command:<16}- {description}\n"));
+    }
+    text.push_str(
+        "\nKeyboard:\n  Enter            - Run command\n  Up / Down        - Recall past commands",
+    );
+    text
+}
 
 /// Render the CLI tab content
 pub fn render(ui: &mut egui::Ui, cli: &mut CLIState, _models: &ModelState) {
@@ -40,7 +63,8 @@ pub fn render(ui: &mut egui::Ui, cli: &mut CLIState, _models: &ModelState) {
             ui.label(text::title("Terminal"));
             ui.add_space(widgets::GAP_WIDGETS);
             ui.label(text::label("COMMANDS"));
-            for cmd in COMMANDS {
+            for (entry, _) in COMMAND_HELP {
+                let cmd = entry.split_whitespace().next().unwrap_or(entry);
                 ui.label(text::readout(cmd));
             }
         });
@@ -63,18 +87,7 @@ pub fn render(ui: &mut egui::Ui, cli: &mut CLIState, _models: &ModelState) {
                         ui.label(text::note("No commands executed yet."));
                         ui.add_space(widgets::GAP_WIDGETS);
                         ui.label(text::label("AVAILABLE COMMANDS"));
-                        let cmds = [
-                            ("list", "List available models"),
-                            ("loaded", "List loaded models"),
-                            ("load <model>", "Load a model"),
-                            ("unload <model>", "Unload a model"),
-                            ("pull <model>", "Pull/download a model"),
-                            ("delete <model>", "Delete a model"),
-                            ("ps", "Show server status"),
-                            ("clear", "Clear output"),
-                            ("help", "Show this list (also rendered after `help`)"),
-                        ];
-                        for (cmd, desc) in cmds {
+                        for (cmd, desc) in COMMAND_HELP {
                             ui.horizontal(|ui| {
                                 widgets::fixed_label(
                                     ui,
@@ -214,7 +227,31 @@ impl CLICommand {
 
 #[cfg(test)]
 mod parse_tests {
-    use super::CLICommand;
+    use super::{help_text, CLICommand, COMMAND_HELP};
+
+    #[test]
+    fn every_listed_command_is_understood() {
+        for (entry, _) in COMMAND_HELP {
+            let word = entry.split_whitespace().next().unwrap_or(entry);
+            let line = if entry.contains('<') {
+                format!("{word} model")
+            } else {
+                word.to_string()
+            };
+            assert!(
+                !matches!(CLICommand::parse(&line), CLICommand::Unknown(_)),
+                "`{line}` is listed but not understood"
+            );
+        }
+    }
+
+    #[test]
+    fn help_lists_every_command() {
+        let text = help_text();
+        for (entry, _) in COMMAND_HELP {
+            assert!(text.contains(entry), "help omits `{entry}`");
+        }
+    }
 
     #[test]
     fn parses_zero_arg_commands() {

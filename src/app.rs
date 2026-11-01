@@ -3133,6 +3133,9 @@ impl LLMGuiApp {
                     self.models.available_models.len()
                 ));
                 status_lines.push(format!("  Loaded: {}", self.models.loaded_models.len()));
+                for name in &self.models.loaded_models {
+                    status_lines.push(format!("    {name}"));
+                }
 
                 if let Some(ref selected) = self.models.selected_model {
                     use crate::modality::ModelModality;
@@ -3156,24 +3159,11 @@ impl LLMGuiApp {
                 });
             }
             CLICommand::Help => {
-                let help_text = r#"Available commands:
-  list              - List available models
-  loaded            - List loaded models
-  load <model>      - Load a model into memory
-  unload <model>    - Unload a model from memory
-  pull <model>      - Pull/download a model
-  delete <model>    - Delete a model
-  ps                - Show server and connection status
-  clear             - Clear the output
-  help              - Show this help message
-
-Keyboard:
-  Enter             - Run command
-  Up / Down         - Recall past commands"#;
+                let help_text = crate::cli_tab::help_text();
                 self.cli.push_output(CLIOutput {
                     timestamp: crate::timefmt::cli_now(),
                     command: input,
-                    output: help_text.to_string(),
+                    output: help_text,
                     ..Default::default()
                 });
             }

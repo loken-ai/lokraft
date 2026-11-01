@@ -77,7 +77,7 @@ const NAV_ITEMS: &[NavItem] = &[
     NavItem {
         icon: NavIcon::Text(">_"),
         label: "Terminal",
-        tip: "REPL for model commands: list / load / unload / pull / ps.",
+        tip: "Model commands: list, loaded, load, unload, pull, delete, ps, clear, help.",
         section: Section::Terminal,
     },
     NavItem {
@@ -493,5 +493,23 @@ mod tests {
         }
         assert_eq!(chevrons(true), 1, "expanded rail");
         assert_eq!(chevrons(false), 1, "collapsed rail");
+    }
+}
+
+#[cfg(test)]
+mod nav_tests {
+    use super::NAV_ITEMS;
+
+    #[test]
+    fn the_terminal_tip_names_every_command() {
+        let tip = NAV_ITEMS
+            .iter()
+            .find(|i| i.label == "Terminal")
+            .expect("a Terminal entry")
+            .tip;
+        for (entry, _) in crate::cli_tab::COMMAND_HELP {
+            let word = entry.split_whitespace().next().unwrap_or(entry);
+            assert!(tip.contains(word), "the Terminal tip omits `{word}`");
+        }
     }
 }
