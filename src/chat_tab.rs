@@ -53,7 +53,6 @@ const GENERATION_PANEL_W: f32 = 320.0;
 /// Characters of a model name shown in the chrome row.
 const MODEL_CHARS: usize = 25;
 /// The model picker and its popup.
-const MODEL_PICKER_W: f32 = 220.0;
 /// The least height the open picker takes; it grows to a share of the window.
 const MODEL_POPUP_H: f32 = 360.0;
 /// The share of the window height the open picker may take.
@@ -732,12 +731,7 @@ fn render_chat_header(
         // The name, and a drawn chevron in the room the trailing spaces leave.
         let button = ui.add_enabled(
             !chat.is_generating,
-            egui::Button::new(
-                RichText::new(format!("{selected_text}    "))
-                    .size(text::SECTION_PT)
-                    .color(theme::ink()),
-            )
-            .min_size(egui::vec2(MODEL_PICKER_W, 0.0)),
+            egui::Button::new(text::value(&format!("{selected_text}      ")).color(theme::ink())),
         );
         let glyph = egui::Rect::from_center_size(
             egui::pos2(

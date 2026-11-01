@@ -25,7 +25,8 @@ const POPULAR_MODELS: &[(&str, &str)] = &[
 const ICON_PT: f32 = 14.0;
 /// Width of the filter field, and of the cells beside it.
 const FILTER_W: f32 = 200.0;
-const SORT_DIR_W: f32 = 40.0;
+/// Width of the kind and the sort lists in the toolbar.
+const TOOLBAR_SELECT_W: f32 = 140.0;
 /// Fixed cells in a model row: kind, source, size, state, and the room kept for the
 /// actions. The name takes what is left, and the lamp is one more cell.
 const MODALITY_W: f32 = 72.0;
@@ -48,8 +49,6 @@ const PULL_FIELD_MIN_W: f32 = 140.0;
 const PULL_BUTTON_RESERVE: f32 = 64.0;
 /// Speed of the indeterminate sweep while a pull has no byte count yet.
 const SWEEP_HZ: f64 = 0.55;
-/// Side of the close mark that clears the filter.
-const CLEAR_PX: f32 = 16.0;
 
 /// Render the models section, returning any actions to perform
 pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction> {
@@ -101,77 +100,10 @@ pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction>
     let visible = visible_pairs.len();
     let narrowed = !filter.is_empty() || models.list_modality_filter.is_some();
 
-    // The chrome row: title, filter, kind, sort, and in the tail Refresh and the count.
+    // The title row: the count and Refresh in the tail.
     widgets::chrome_row(ui, |ui| {
         Icon::Package.show(ui, ICON_PT, theme::ink());
         ui.label(text::title("Models"));
-        ui.add_space(widgets::GAP_WIDGETS);
-
-        Icon::Search.show(ui, ICON_PT, theme::ink_dim());
-        ui.add(
-            egui::TextEdit::singleline(&mut models.list_filter)
-                .hint_text("Filter")
-                .desired_width(FILTER_W),
-        );
-        // Clearing drops the name filter and the kind together.
-        let any_filter_active =
-            !models.list_filter.is_empty() || models.list_modality_filter.is_some();
-        if any_filter_active
-            && widgets::close_button(ui, CLEAR_PX)
-                .on_hover_text("Clear name and kind filters")
-                .clicked()
-        {
-            models.list_filter.clear();
-            models.list_modality_filter = None;
-        }
-        ui.add_space(widgets::GAP_WIDGETS);
-
-        // The kind, one pill seated. Clicking the seated one returns to All.
-        ui.label(text::label("KIND"));
-        let chips: &[(Option<ModelModality>, &str)] = &[
-            (None, "ALL"),
-            (Some(ModelModality::Text), "TEXT"),
-            (Some(ModelModality::Vision), "VISION"),
-            (Some(ModelModality::ImageGen), "IMAGE"),
-            (Some(ModelModality::AudioTts), "TTS"),
-            (Some(ModelModality::AudioAsr), "ASR"),
-            (Some(ModelModality::VideoGen), "VIDEO"),
-        ];
-        for (kind, label) in chips {
-            let selected = models.list_modality_filter == *kind;
-            if widgets::selector_pill(ui, label, selected).clicked() {
-                models.list_modality_filter = if selected { None } else { *kind };
-            }
-        }
-        ui.add_space(widgets::GAP_WIDGETS);
-
-        // The sort field, and its direction as a word in a fixed cell so the
-        // pills keep their width.
-        ui.label(text::label("SORT"));
-        for (field, label) in [
-            (ModelSortField::Name, "NAME"),
-            (ModelSortField::Size, "SIZE"),
-            (ModelSortField::Date, "DATE"),
-        ] {
-            let selected = models.sort_field == field;
-            if widgets::selector_pill(ui, label, selected).clicked() {
-                if selected {
-                    models.sort_direction = match models.sort_direction {
-                        ModelSortDirection::Asc => ModelSortDirection::Desc,
-                        ModelSortDirection::Desc => ModelSortDirection::Asc,
-                    };
-                } else {
-                    models.sort_field = field;
-                    models.sort_direction = ModelSortDirection::Asc;
-                }
-            }
-        }
-        let direction = match models.sort_direction {
-            ModelSortDirection::Asc => "ASC",
-            ModelSortDirection::Desc => "DESC",
-        };
-        widgets::fixed_label(ui, SORT_DIR_W, text::label(direction));
-
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if widgets::icon_button(ui, Icon::Refresh, "Reload the model list from the server")
                 .clicked()
@@ -179,12 +111,81 @@ pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction>
                 actions.push(SettingsAction::RefreshModels);
             }
             ui.add_space(widgets::GAP_WIDGETS);
-            widgets::readout(
-                ui,
-                widgets::READOUT_WIDE_W,
-                &count_text(visible, total, narrowed),
-            );
+            widgets::pill(ui, &count_text(visible, total, narrowed));
         });
+    });
+    ui.add_space(widgets::GAP_WIDGETS);
+
+    // The toolbar: the name filter, the kind and the sort as lists.
+    ui.horizontal(|ui| {
+        Icon::Search.show(ui, ICON_PT, theme::ink_dim());
+        ui.add(
+            egui::TextEdit::singleline(&mut models.list_filter)
+                .hint_text("Filter models")
+                .desired_width(FILTER_W),
+        );
+        ui.add_space(widgets::GAP_WIDGETS);
+
+        let kinds: &[(Option<ModelModality>, &str)] = &[
+            (None, "All kinds"),
+            (Some(ModelModality::Text), "Text"),
+            (Some(ModelModality::Vision), "Vision"),
+            (Some(ModelModality::ImageGen), "Image"),
+            (Some(ModelModality::AudioTts), "Speech"),
+            (Some(ModelModality::AudioAsr), "Transcription"),
+            (Some(ModelModality::VideoGen), "Video"),
+        ];
+        let kind_label = kinds
+            .iter()
+            .find(|(k, _)| *k == models.list_modality_filter)
+            .map(|(_, l)| *l)
+            .unwrap_or("All kinds");
+        egui::ComboBox::from_id_salt("models_kind")
+            .selected_text(kind_label)
+            .width(TOOLBAR_SELECT_W)
+            .show_ui(ui, |ui| {
+                for (kind, label) in kinds {
+                    ui.selectable_value(&mut models.list_modality_filter, *kind, *label);
+                }
+            });
+
+        let fields = [
+            (ModelSortField::Name, "Sort by name"),
+            (ModelSortField::Size, "Sort by size"),
+            (ModelSortField::Date, "Sort by date"),
+        ];
+        let sort_label = fields
+            .iter()
+            .find(|(f, _)| *f == models.sort_field)
+            .map(|(_, l)| *l)
+            .unwrap_or("Sort by name");
+        egui::ComboBox::from_id_salt("models_sort")
+            .selected_text(sort_label)
+            .width(TOOLBAR_SELECT_W)
+            .show_ui(ui, |ui| {
+                for (field, label) in fields {
+                    ui.selectable_value(&mut models.sort_field, field, label);
+                }
+            });
+        let direction = match models.sort_direction {
+            ModelSortDirection::Asc => "Ascending",
+            ModelSortDirection::Desc => "Descending",
+        };
+        if ui
+            .add(widgets::quiet_button(direction))
+            .on_hover_text("Reverse the order")
+            .clicked()
+        {
+            models.sort_direction = match models.sort_direction {
+                ModelSortDirection::Asc => ModelSortDirection::Desc,
+                ModelSortDirection::Desc => ModelSortDirection::Asc,
+            };
+        }
+
+        if narrowed && ui.add(widgets::quiet_button("Clear filters")).clicked() {
+            models.list_filter.clear();
+            models.list_modality_filter = None;
+        }
     });
     ui.add_space(widgets::GAP_WIDGETS);
 
