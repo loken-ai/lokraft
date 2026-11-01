@@ -1,0 +1,10 @@
+lokraft
+Copyright the lokraft authors. Licensed under MIT OR Apache-2.0.
+
+Third party material shipped in the binary:
+
+IBM Plex Sans and IBM Plex Mono
+  Files: assets/fonts/IBMPlex*.ttf
+  Copyright 2017 IBM Corp., with Reserved Font Name "Plex".
+  Licence: SIL Open Font License 1.1, in assets/fonts/LICENSE-IBM-Plex.txt.
+  The fonts are embedded unmodified.

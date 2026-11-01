@@ -2916,7 +2916,6 @@ mod render_tests {
     use super::render;
     use crate::state::{MediaKind, MediaState, SpeechEngine};
     use egui_kittest::kittest::NodeT;
-    use egui_kittest::Harness;
     use std::collections::HashMap;
 
     /// Render one kind (with an optional state tweak) and run a check against the resulting
@@ -2955,7 +2954,7 @@ mod render_tests {
         };
         tweak(&mut media);
         let mut textures: HashMap<String, egui::TextureHandle> = HashMap::new();
-        let mut harness = Harness::new_ui(move |ui| {
+        let mut harness = crate::theme::test_harness(None, move |ui| {
             let mut player = crate::audio_playback::AudioPlayer::default();
             let mut video = crate::video_engine::VideoPlayback::default();
             let _ = render(
@@ -3002,7 +3001,7 @@ mod render_tests {
     fn overlay_controls_do_not_take_layout_space() {
         let seen = std::rc::Rc::new(std::cell::RefCell::new(None::<(egui::Rect, egui::Rect)>));
         let out = seen.clone();
-        let mut harness = Harness::new_ui(move |ui| {
+        let mut harness = crate::theme::test_harness(None, move |ui| {
             ui.label("anchor so the ui has an extent to compare");
             let before = ui.min_rect();
             // A rect deliberately WIDER and TALLER than what the ui has used, so an
@@ -3144,7 +3143,7 @@ mod render_tests {
     /// overlay a headless run can read - the picture itself cannot be judged here.
     #[test]
     fn the_fullscreen_viewer_keeps_the_transport_and_the_way_out() {
-        let mut harness = Harness::new_ui(move |ui| {
+        let mut harness = crate::theme::test_harness(None, move |ui| {
             // A texture stands in for a decoded frame; the viewer refuses to draw without
             // one, which is the state this test is not about.
             let img = egui::ColorImage::from_rgb([2, 2], &[128u8; 12]);

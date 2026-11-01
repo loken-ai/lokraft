@@ -92,6 +92,28 @@ pub fn palette() -> &'static Palette {
     }
 }
 
+/// A headless window for a test that draws text. The fonts bind one frame after they are
+/// set, so the first frame installs them and draws nothing.
+#[cfg(test)]
+pub(crate) fn test_harness<'a>(
+    size: Option<egui::Vec2>,
+    mut app: impl FnMut(&mut egui::Ui) + 'a,
+) -> egui_kittest::Harness<'a> {
+    let mut ready = false;
+    let mut builder = egui_kittest::Harness::builder();
+    if let Some(size) = size {
+        builder = builder.with_size(size);
+    }
+    builder.build_ui(move |ui| {
+        if !ready {
+            apply(ui.ctx(), true);
+            ready = true;
+            return;
+        }
+        app(ui);
+    })
+}
+
 /// The skin is one process-wide value, and the test binary runs its tests
 /// on parallel threads. A test that applies a skin or compares two colours
 /// of the palette holds this for its duration.
@@ -197,10 +219,87 @@ const PANEL_PADDING: i8 = 8;
 /// Build the egui visuals and style for `dark` and install them on `ctx`.
 /// Records the active skin for `palette()`.
 pub fn apply(ctx: &egui::Context, dark: bool) {
+    install_fonts_once(ctx);
     let p = if dark { &DARK } else { &LIGHT };
     DARK_ACTIVE.store(dark, Ordering::Relaxed);
     ctx.set_visuals(visuals_for(p));
     ctx.all_styles_mut(|style| style_for(p, style));
+}
+
+/// The family of the medium weight, used for values and names.
+pub const FONT_MEDIUM: &str = "plex-medium";
+/// The family of the semibold weight, used for titles.
+pub const FONT_SEMIBOLD: &str = "plex-semibold";
+
+/// Load IBM Plex once per context. The default fonts stay behind it as the fallback for
+/// the symbols Plex does not draw.
+fn install_fonts_once(ctx: &egui::Context) {
+    let id = egui::Id::new("lokraft_fonts_installed");
+    if ctx.data(|d| d.get_temp::<bool>(id)).unwrap_or(false) {
+        return;
+    }
+    ctx.data_mut(|d| d.insert_temp(id, true));
+    let mut fonts = egui::FontDefinitions::default();
+    let files: [(&str, &[u8]); 5] = [
+        (
+            "plex-regular",
+            include_bytes!("../assets/fonts/IBMPlexSans-Regular.ttf"),
+        ),
+        (
+            FONT_MEDIUM,
+            include_bytes!("../assets/fonts/IBMPlexSans-Medium.ttf"),
+        ),
+        (
+            FONT_SEMIBOLD,
+            include_bytes!("../assets/fonts/IBMPlexSans-SemiBold.ttf"),
+        ),
+        (
+            "plex-mono",
+            include_bytes!("../assets/fonts/IBMPlexMono-Regular.ttf"),
+        ),
+        (
+            "plex-mono-medium",
+            include_bytes!("../assets/fonts/IBMPlexMono-Medium.ttf"),
+        ),
+    ];
+    for (name, bytes) in files {
+        fonts.font_data.insert(
+            name.to_string(),
+            std::sync::Arc::new(egui::FontData::from_static(bytes)),
+        );
+    }
+    let fallback_sans = fonts
+        .families
+        .get(&egui::FontFamily::Proportional)
+        .cloned()
+        .unwrap_or_default();
+    let fallback_mono = fonts
+        .families
+        .get(&egui::FontFamily::Monospace)
+        .cloned()
+        .unwrap_or_default();
+    let with_fallback = |first: &str, rest: &[String]| {
+        let mut v = vec![first.to_string()];
+        v.extend(rest.iter().cloned());
+        v
+    };
+    fonts.families.insert(
+        egui::FontFamily::Proportional,
+        with_fallback("plex-regular", &fallback_sans),
+    );
+    fonts.families.insert(
+        egui::FontFamily::Monospace,
+        with_fallback("plex-mono", &fallback_mono),
+    );
+    fonts.families.insert(
+        egui::FontFamily::Name(FONT_MEDIUM.into()),
+        with_fallback(FONT_MEDIUM, &fallback_sans),
+    );
+    fonts.families.insert(
+        egui::FontFamily::Name(FONT_SEMIBOLD.into()),
+        with_fallback(FONT_SEMIBOLD, &fallback_sans),
+    );
+    ctx.set_fonts(fonts);
 }
 
 /// One widget state: a fill, a weaker fill for buttons, a border and an ink.
@@ -351,8 +450,10 @@ pub mod text {
     }
     pub fn value(s: &str) -> RichText {
         RichText::new(s)
-            .size(VALUE_PT)
-            .strong()
+            .font(FontId::new(
+                VALUE_PT,
+                FontFamily::Name(super::FONT_MEDIUM.into()),
+            ))
             .color(palette().ink)
     }
     /// The label of a field, above it: medium weight, in the ink.
@@ -366,14 +467,18 @@ pub mod text {
     }
     pub fn section(caps: &str) -> RichText {
         RichText::new(caps)
-            .size(SECTION_PT)
-            .strong()
+            .font(FontId::new(
+                SECTION_PT,
+                FontFamily::Name(super::FONT_SEMIBOLD.into()),
+            ))
             .color(palette().ink_dim)
     }
     pub fn title(s: &str) -> RichText {
         RichText::new(s)
-            .size(TITLE_PT)
-            .strong()
+            .font(FontId::new(
+                TITLE_PT,
+                FontFamily::Name(super::FONT_SEMIBOLD.into()),
+            ))
             .color(palette().ink)
     }
     pub fn note(s: &str) -> RichText {

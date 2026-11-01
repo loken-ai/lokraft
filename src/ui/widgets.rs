@@ -500,7 +500,7 @@ mod tests {
     fn answer(act: impl FnOnce(&mut egui_kittest::Harness<'_>)) -> Option<bool> {
         let outcome = std::rc::Rc::new(std::cell::Cell::new(None));
         let sink = outcome.clone();
-        let mut harness = egui_kittest::Harness::new_ui(move |ui| {
+        let mut harness = crate::theme::test_harness(None, move |ui| {
             let asked = confirm_dialog(
                 ui.ctx(),
                 &Confirm {
@@ -532,7 +532,7 @@ mod tests {
 
     fn frame(dark: bool, body: impl FnMut(&mut Ui)) {
         let _skin = theme::skin_lock();
-        let mut harness = egui_kittest::Harness::new_ui(body);
+        let mut harness = crate::theme::test_harness(None, body);
         theme::apply(&harness.ctx, dark);
         harness.run();
     }
@@ -592,7 +592,7 @@ mod tests {
     fn a_tab_bar_reports_the_tab_clicked() {
         use egui_kittest::kittest::Queryable;
         let mut clicked = None;
-        let mut harness = egui_kittest::Harness::new_ui(|ui| {
+        let mut harness = crate::theme::test_harness(None, |ui| {
             if let Some(i) = tab_bar(ui, 0, &["ONE", "TWO"]) {
                 clicked = Some(i);
             }

@@ -2164,7 +2164,7 @@ mod tests {
         fn reserved(is_generating: bool) -> f32 {
             let out = std::rc::Rc::new(std::cell::Cell::new(0.0));
             let sink = out.clone();
-            let mut harness = egui_kittest::Harness::new_ui(move |ui| {
+            let mut harness = crate::theme::test_harness(None, move |ui| {
                 sink.set(chat_input_reserved_height(ui, 1, false, is_generating));
             });
             harness.run();
@@ -2197,7 +2197,7 @@ mod tests {
         let in_flight = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let seed = std::cell::Cell::new(None);
         let play_err = std::cell::Cell::new(None);
-        let mut harness = egui_kittest::Harness::new_ui(|ui| {
+        let mut harness = crate::theme::test_harness(None, |ui| {
             for msg in &messages {
                 render_message(
                     ui,
@@ -2241,7 +2241,7 @@ mod tests {
         let in_flight = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let seed = std::cell::Cell::new(None);
         let play_err = std::cell::Cell::new(None);
-        let mut harness = egui_kittest::Harness::new_ui(|ui| {
+        let mut harness = crate::theme::test_harness(None, |ui| {
             render_message(
                 ui,
                 &reply,

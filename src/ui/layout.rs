@@ -552,7 +552,7 @@ mod tests {
         fn chevrons(expanded: bool) -> usize {
             use egui_kittest::kittest::NodeT;
             let mut section = Section::Chat;
-            let mut harness = egui_kittest::Harness::new_ui(move |ui| {
+            let mut harness = crate::theme::test_harness(None, move |ui| {
                 sidebar(ui, &mut section, expanded);
             });
             harness.run();
