@@ -3715,6 +3715,9 @@ impl eframe::App for LLMGuiApp {
         // Rendered after the CentralPanel so the bottom-right stack
         // floats above all tab content. Handles its own expiry +
         // repaint scheduling.
+        for (severity, message) in crate::notice::drain() {
+            self.toast(severity, message);
+        }
         crate::toast::render(&ctx, &mut self.toasts);
 
         // Fullscreen image viewer (zoom/pan). Rendered last so its modal

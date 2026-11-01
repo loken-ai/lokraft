@@ -126,7 +126,7 @@ fn render_log_header(
                     })
                     .collect::<Vec<_>>()
                     .join("\n");
-                ui.ctx().copy_text(text);
+                crate::notice::copy(ui.ctx(), text, "the visible log lines");
             }
         });
     });

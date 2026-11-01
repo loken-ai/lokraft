@@ -1675,7 +1675,7 @@ fn render_message(
                     .on_hover_text("Copy the seed: paste it into the next prompt's options.seed to re-roll this exact generation")
                     .clicked()
                 {
-                    ui.ctx().copy_text(seed.to_string());
+                    crate::notice::copy(ui.ctx(), seed.to_string(), "the seed");
                 }
                 if ui
                     .add(
@@ -1868,7 +1868,7 @@ fn render_message(
                         .on_hover_text("Copy the base64 string to the clipboard")
                         .clicked()
                     {
-                        ui.ctx().copy_text(img_b64.clone());
+                        crate::notice::copy(ui.ctx(), img_b64.clone(), "the image as base64");
                     }
                 });
                 ui.add_space(widgets::GAP_LABEL);
@@ -1897,8 +1897,11 @@ fn render_message(
                             .on_hover_text("Copy the response text to the clipboard")
                             .clicked()
                         {
-                            ui.ctx()
-                                .copy_text(split_thinking(&msg.content).1.to_string());
+                            crate::notice::copy(
+                                ui.ctx(),
+                                split_thinking(&msg.content).1.to_string(),
+                                "the response",
+                            );
                         }
                     });
                 }

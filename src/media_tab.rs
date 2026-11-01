@@ -2061,7 +2061,7 @@ fn render_results(
                     .add(egui::Button::new(text::note("Copy text")).frame(false))
                     .clicked()
                 {
-                    ui.ctx().copy_text(result.clone());
+                    crate::notice::copy(ui.ctx(), result.clone(), "the text");
                 }
             });
             ui.add_space(widgets::GAP_LABEL);
