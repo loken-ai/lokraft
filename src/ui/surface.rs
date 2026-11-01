@@ -1,98 +1,37 @@
 //! Painted surfaces. Everything here paints into a rect the caller already
 //! owns and allocates nothing, except `meter`, which is a cell. Every surface
-//! reads the palette, so both skins get their own hairline weights without a
-//! branch: the light source is above in both, the well is always the darkest
-//! surface and the plate the lightest.
+//! is flat: a fill and a hairline border from the palette, so both skins read
+//! the same way without a branch.
 
 use eframe::egui::{
-    self, epaint, Align2, Color32, FontId, Pos2, Rect, Shape, Stroke, StrokeKind, Ui, Vec2,
+    self, Align2, Color32, FontId, Pos2, Rect, Shape, Stroke, StrokeKind, Ui, Vec2,
 };
 
 use crate::theme::{palette, text, HAIRLINE};
 
-/// Corner radius of a plate.
-pub const PLATE_RADIUS: f32 = 4.0;
-/// Corner radius of a well.
-pub const WELL_RADIUS: f32 = 3.0;
-/// Horizontal inset of the lip shadow, so it stops inside the rounded corner.
-const LIP_INSET: f32 = 2.0;
-/// Width of the shadow under a lip.
-const LIP_W: f32 = 1.5;
-/// Half a pixel: a one-pixel line is drawn on the pixel centre.
-const HALF_PX: f32 = 0.5;
-/// Width of the bezel shadow at the top of a screen.
-const SCREEN_BEZEL_W: f32 = 2.0;
+/// Corner radius of a plate, which is a card.
+pub const PLATE_RADIUS: f32 = 8.0;
+/// Corner radius of a well, which is a field.
+pub const WELL_RADIUS: f32 = 6.0;
 /// Distance from the top of a heading to its rule.
 const HEADING_RULE_DY: f32 = 8.0;
 /// Strength of a heading's rule relative to its ink.
 const HEADING_RULE_GAMMA: f32 = 0.35;
-/// Outer halo of a lit lamp, as a multiple of its radius, and its strength.
-const LAMP_HALO_OUTER_R: f32 = 2.2;
-const LAMP_HALO_OUTER_GAMMA: f32 = 0.20;
-/// Inner halo of a lit lamp.
-const LAMP_HALO_INNER_R: f32 = 1.5;
-const LAMP_HALO_INNER_GAMMA: f32 = 0.35;
-/// Offset and radius of the glint on a lit lamp, as multiples of its radius.
-const GLINT_OFFSET: f32 = 0.35;
-const GLINT_R: f32 = 0.28;
-/// Corner radius of a meter's well.
+/// Corner radius of a meter.
 const METER_RADIUS: f32 = 2.0;
-/// The fill of a meter catches less light than a lamp.
-const METER_CATCH_DIV: u8 = 4;
 /// Inset of a chevron's points from its rect, as a fraction of its width.
 const CHEVRON_INSET: f32 = 0.3;
 
-fn black(alpha: u8) -> Color32 {
-    Color32::from_black_alpha(alpha)
-}
-
-fn white(alpha: u8) -> Color32 {
-    Color32::from_white_alpha(alpha)
-}
-
-/// A vertical gradient as one mesh: four vertices, two triangles.
-pub fn gradient_shape(rect: Rect, top: Color32, bottom: Color32) -> Shape {
-    let mut mesh = epaint::Mesh::default();
-    mesh.colored_vertex(rect.left_top(), top);
-    mesh.colored_vertex(rect.right_top(), top);
-    mesh.colored_vertex(rect.left_bottom(), bottom);
-    mesh.colored_vertex(rect.right_bottom(), bottom);
-    mesh.add_triangle(0, 1, 2);
-    mesh.add_triangle(1, 3, 2);
-    Shape::mesh(mesh)
-}
-
-pub fn gradient_v(ui: &Ui, rect: Rect, top: Color32, bottom: Color32) {
-    ui.painter().add(gradient_shape(rect, top, bottom));
-}
-
-/// A raised plate: lighter at the top, an edge, a shadow under the lip and a
-/// catch of light on the bottom.
+/// A card: the panel fill inside a hairline border.
 pub fn plate_shape(rect: Rect, radius: f32) -> Shape {
     let p = palette();
-    let lip_y = rect.top() + HALF_PX + HAIRLINE;
-    let catch_y = rect.bottom() - HALF_PX - HAIRLINE;
     Shape::Vec(vec![
-        gradient_shape(rect, p.plate_top, p.plate_bottom),
+        Shape::rect_filled(rect, radius, p.panel),
         Shape::rect_stroke(
             rect,
             radius,
-            Stroke::new(HAIRLINE, p.plate_edge),
+            Stroke::new(HAIRLINE, p.border),
             StrokeKind::Inside,
-        ),
-        Shape::line_segment(
-            [
-                Pos2::new(rect.left() + LIP_INSET, lip_y),
-                Pos2::new(rect.right() - LIP_INSET, lip_y),
-            ],
-            Stroke::new(LIP_W, black(p.lip_shadow_a)),
-        ),
-        Shape::line_segment(
-            [
-                Pos2::new(rect.left() + LIP_INSET, catch_y),
-                Pos2::new(rect.right() - LIP_INSET, catch_y),
-            ],
-            Stroke::new(HAIRLINE, white(p.light_catch_a)),
         ),
     ])
 }
@@ -101,31 +40,15 @@ pub fn plate(ui: &Ui, rect: Rect, radius: f32) {
     ui.painter().add(plate_shape(rect, radius));
 }
 
-/// A sunk well: the near wall is in shadow, the far wall catches the light.
+/// A field: the field fill inside a hairline border.
 pub fn recess_shape(rect: Rect, radius: f32) -> Shape {
     let p = palette();
-    let shadow_y = rect.top() + HALF_PX;
-    let catch_y = rect.bottom() - HALF_PX;
     Shape::Vec(vec![
-        Shape::rect_filled(rect, radius, p.well),
-        Shape::line_segment(
-            [
-                Pos2::new(rect.left() + radius, shadow_y),
-                Pos2::new(rect.right() - radius, shadow_y),
-            ],
-            Stroke::new(LIP_W, black(p.well_shadow_a)),
-        ),
-        Shape::line_segment(
-            [
-                Pos2::new(rect.left() + radius, catch_y),
-                Pos2::new(rect.right() - radius, catch_y),
-            ],
-            Stroke::new(HAIRLINE, white(p.well_catch_a)),
-        ),
+        Shape::rect_filled(rect, radius, p.field),
         Shape::rect_stroke(
             rect,
             radius,
-            Stroke::new(HAIRLINE, p.well_edge),
+            Stroke::new(HAIRLINE, p.border),
             StrokeKind::Inside,
         ),
     ])
@@ -135,38 +58,18 @@ pub fn recess(ui: &Ui, rect: Rect, radius: f32) {
     ui.painter().add(recess_shape(rect, radius));
 }
 
-/// A screen: a well with the glass over it, so only a bezel shadow at the top.
+/// A content area: the field fill, with no border.
 pub fn screen_shape(rect: Rect) -> Shape {
-    let p = palette();
-    let bezel_y = rect.top() + SCREEN_BEZEL_W / 2.0;
-    Shape::Vec(vec![
-        Shape::rect_filled(rect, WELL_RADIUS, p.well),
-        Shape::line_segment(
-            [
-                Pos2::new(rect.left() + WELL_RADIUS, bezel_y),
-                Pos2::new(rect.right() - WELL_RADIUS, bezel_y),
-            ],
-            Stroke::new(SCREEN_BEZEL_W, black(p.well_shadow_a)),
-        ),
-    ])
+    Shape::rect_filled(rect, WELL_RADIUS, palette().field)
 }
 
 pub fn screen(ui: &Ui, rect: Rect) {
     ui.painter().add(screen_shape(rect));
 }
 
-/// Text screened onto a surface: a pale copy one pixel below, then the ink.
+/// Text painted at a position.
 pub fn printed(ui: &Ui, pos: Pos2, s: &str, font: FontId, ink: Color32, anchor: Align2) {
-    let p = palette();
-    let painter = ui.painter();
-    painter.text(
-        pos + Vec2::new(0.0, 1.0),
-        anchor,
-        s,
-        font.clone(),
-        white(p.print_halo_a),
-    );
-    painter.text(pos, anchor, s, font, ink);
+    ui.painter().text(pos, anchor, s, font, ink);
 }
 
 /// Letter-spaced text, painted one glyph at a time from `left`. Returns the
@@ -232,49 +135,23 @@ pub fn caption(ui: &Ui, at: Pos2, s: &str) -> f32 {
     y
 }
 
-/// A lamp: a halo and a glint when lit, the off body otherwise.
+/// A lamp: a dot in `tint` when lit, the off colour otherwise.
 pub fn lamp(ui: &Ui, centre: Pos2, r: f32, on: bool, tint: Color32) {
     let p = palette();
-    let painter = ui.painter();
-    if on {
-        painter.circle_filled(
-            centre,
-            r * LAMP_HALO_OUTER_R,
-            tint.gamma_multiply(LAMP_HALO_OUTER_GAMMA),
-        );
-        painter.circle_filled(
-            centre,
-            r * LAMP_HALO_INNER_R,
-            tint.gamma_multiply(LAMP_HALO_INNER_GAMMA),
-        );
-    }
-    painter.circle_filled(centre, r, if on { tint } else { p.lamp_off });
-    painter.circle_stroke(centre, r, Stroke::new(HAIRLINE, p.border));
-    if on {
-        painter.circle_filled(
-            centre - Vec2::splat(r * GLINT_OFFSET),
-            r * GLINT_R,
-            white(p.glint_a),
-        );
-    }
+    ui.painter()
+        .circle_filled(centre, r, if on { tint } else { p.lamp_off });
 }
 
-/// A meter: a sunk well of `size` with `fraction` of it filled in `tint`.
+/// A meter: a track of `size` with `fraction` of it filled in `tint`.
 /// The one surface that allocates, because a meter is a cell in a row.
 pub fn meter(ui: &mut Ui, fraction: f32, size: Vec2, tint: Color32) -> egui::Response {
     let p = palette();
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
-    recess(ui, rect, METER_RADIUS);
+    ui.painter().rect_filled(rect, METER_RADIUS, p.raised);
     let fill_w = fraction.clamp(0.0, 1.0) * rect.width();
     if fill_w > 0.0 {
         let fill = Rect::from_min_size(rect.min, Vec2::new(fill_w, rect.height()));
-        let painter = ui.painter();
-        painter.rect_filled(fill, METER_RADIUS, tint);
-        let y = fill.top() + HALF_PX;
-        painter.line_segment(
-            [Pos2::new(fill.left(), y), Pos2::new(fill.right(), y)],
-            Stroke::new(HAIRLINE, white(p.glint_a / METER_CATCH_DIV)),
-        );
+        ui.painter().rect_filled(fill, METER_RADIUS, tint);
     }
     response
 }

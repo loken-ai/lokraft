@@ -549,11 +549,13 @@ mod tests {
         let selected = std::rc::Rc::new(std::cell::RefCell::new(None::<String>));
         let sink = actions.clone();
         let chosen = selected.clone();
-        let mut harness = egui_kittest::Harness::new_ui(move |ui| {
-            let out = render(ui, &mut models);
-            sink.borrow_mut().extend(out);
-            *chosen.borrow_mut() = models.selected_model.clone();
-        });
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1000.0, 700.0))
+            .build_ui(move |ui| {
+                let out = render(ui, &mut models);
+                sink.borrow_mut().extend(out);
+                *chosen.borrow_mut() = models.selected_model.clone();
+            });
         harness.run();
         harness.get_by_label("Load").click();
         harness.run();

@@ -1,11 +1,10 @@
 //! Colour palette and egui visuals.
 //!
 //! The application is painted from one `Palette`, of which two instances exist:
-//! `DARK` and `LIGHT`. Both obey the same physics: three surface depths (a raised
-//! plate, a flat panel, a sunk well), light from above (a dark hairline under a
-//! lip, a pale hairline on a far wall), one accent, three status colours. Only
-//! the ink flips polarity between the two. The relations between the fields are
-//! pinned by the tests at the bottom of this file.
+//! `DARK` and `LIGHT`. Both are flat: a floor, a panel on it, a hover fill, a hairline
+//! border, a field fill, one accent and three status colours. Only the ink flips polarity
+//! between the two. The relations between the fields are pinned by the tests at the bottom
+//! of this file.
 
 use eframe::egui::{self, Color32, CornerRadius, Stroke};
 
@@ -13,14 +12,15 @@ use eframe::egui::{self, Color32, CornerRadius, Stroke};
 pub struct Palette {
     pub dark: bool,
 
-    // Three depths: the floor the content sits on, a flat panel on it, a control
-    // standing off the panel.
+    // The floor the content sits on, a panel on it, and the fill under a pointer.
     pub bg: Color32,
     pub panel: Color32,
     pub raised: Color32,
     pub border: Color32,
+    // What a text field and a rail are filled with.
+    pub field: Color32,
 
-    // Ink. `ink_dim` clears WCAG AA (4.5:1) on `bg`, `panel` and `plate_top`.
+    // Ink. `ink_dim` clears WCAG AA (4.5:1) on `bg`, `panel`, `raised` and `field`.
     pub ink: Color32,
     pub ink_dim: Color32,
 
@@ -35,79 +35,44 @@ pub struct Palette {
     pub warning: Color32,
     pub error: Color32,
 
-    // What the surface primitives read. A plate is lighter at its top than at its
-    // bottom; a well is darker than the floor; its edge darker still.
-    pub plate_top: Color32,
-    pub plate_bottom: Color32,
-    pub plate_edge: Color32,
-    pub well: Color32,
-    pub well_edge: Color32,
+    // An indicator that is off.
     pub lamp_off: Color32,
-
-    // Unmultiplied alphas for the hairlines: black under a lip, white on a far
-    // wall, white for the glint on a lamp, white under printed letters.
-    pub lip_shadow_a: u8,
-    pub light_catch_a: u8,
-    pub well_shadow_a: u8,
-    pub well_catch_a: u8,
-    pub glint_a: u8,
-    pub print_halo_a: u8,
 }
 
 pub const DARK: Palette = Palette {
     dark: true,
-    bg: Color32::from_rgb(0x1A, 0x1A, 0x1E),
-    panel: Color32::from_rgb(0x26, 0x26, 0x2C),
-    raised: Color32::from_rgb(0x2F, 0x2F, 0x38),
-    border: Color32::from_rgb(0x3A, 0x3A, 0x45),
-    ink: Color32::from_rgb(0xE8, 0xE8, 0xEE),
-    ink_dim: Color32::from_rgb(0x9A, 0x9A, 0xAA),
-    accent: Color32::from_rgb(0x6F, 0xA8, 0xE6),
-    accent_dim: Color32::from_rgb(0x4C, 0x79, 0xAD),
-    on_accent: Color32::from_rgb(0x1A, 0x1A, 0x1E),
-    success: Color32::from_rgb(0x48, 0x9B, 0x62),
-    warning: Color32::from_rgb(0xC8, 0x96, 0x2A),
-    error: Color32::from_rgb(0xC0, 0x56, 0x4E),
-    plate_top: Color32::from_rgb(0x32, 0x32, 0x3C),
-    plate_bottom: Color32::from_rgb(0x28, 0x28, 0x2F),
-    plate_edge: Color32::from_rgb(0x15, 0x15, 0x1A),
-    well: Color32::from_rgb(0x13, 0x13, 0x17),
-    well_edge: Color32::from_rgb(0x0C, 0x0C, 0x10),
-    lamp_off: Color32::from_rgb(0x1E, 0x1E, 0x28),
-    lip_shadow_a: 110,
-    light_catch_a: 20,
-    well_shadow_a: 170,
-    well_catch_a: 24,
-    glint_a: 150,
-    print_halo_a: 30,
+    bg: Color32::from_rgb(0x11, 0x12, 0x16),
+    panel: Color32::from_rgb(0x18, 0x1A, 0x20),
+    raised: Color32::from_rgb(0x20, 0x23, 0x2B),
+    border: Color32::from_rgb(0x2B, 0x2E, 0x39),
+    field: Color32::from_rgb(0x11, 0x12, 0x16),
+    ink: Color32::from_rgb(0xE7, 0xE9, 0xF0),
+    ink_dim: Color32::from_rgb(0x9C, 0xA2, 0xB3),
+    accent: Color32::from_rgb(0xA5, 0x8C, 0xF5),
+    accent_dim: Color32::from_rgb(0x7A, 0x66, 0xC4),
+    on_accent: Color32::from_rgb(0x14, 0x11, 0x1F),
+    success: Color32::from_rgb(0x5C, 0xC9, 0x8A),
+    warning: Color32::from_rgb(0xE0, 0xB0, 0x4A),
+    error: Color32::from_rgb(0xEE, 0x7D, 0x76),
+    lamp_off: Color32::from_rgb(0x3A, 0x3E, 0x4C),
 };
 
 pub const LIGHT: Palette = Palette {
     dark: false,
-    bg: Color32::from_rgb(0xE4, 0xE4, 0xEA),
-    panel: Color32::from_rgb(0xF3, 0xF3, 0xF6),
-    raised: Color32::from_rgb(0xFB, 0xFB, 0xFD),
-    border: Color32::from_rgb(0xC9, 0xC9, 0xD3),
-    ink: Color32::from_rgb(0x1E, 0x1E, 0x26),
-    ink_dim: Color32::from_rgb(0x62, 0x62, 0x6F),
-    accent: Color32::from_rgb(0x2A, 0x66, 0xAA),
-    accent_dim: Color32::from_rgb(0x5A, 0x8C, 0xC8),
+    bg: Color32::from_rgb(0xF5, 0xF6, 0xF9),
+    panel: Color32::from_rgb(0xFF, 0xFF, 0xFF),
+    raised: Color32::from_rgb(0xEC, 0xEE, 0xF4),
+    border: Color32::from_rgb(0xDC, 0xDF, 0xE8),
+    field: Color32::from_rgb(0xF5, 0xF6, 0xF9),
+    ink: Color32::from_rgb(0x18, 0x1A, 0x22),
+    ink_dim: Color32::from_rgb(0x5B, 0x60, 0x70),
+    accent: Color32::from_rgb(0x64, 0x44, 0xD4),
+    accent_dim: Color32::from_rgb(0x8E, 0x76, 0xE6),
     on_accent: Color32::from_rgb(0xFF, 0xFF, 0xFF),
-    success: Color32::from_rgb(0x27, 0x74, 0x4A),
-    warning: Color32::from_rgb(0x8F, 0x5E, 0x0E),
-    error: Color32::from_rgb(0xB3, 0x39, 0x2F),
-    plate_top: Color32::from_rgb(0xFF, 0xFF, 0xFF),
-    plate_bottom: Color32::from_rgb(0xEF, 0xEF, 0xF3),
-    plate_edge: Color32::from_rgb(0xC2, 0xC2, 0xCC),
-    well: Color32::from_rgb(0xDA, 0xDA, 0xE1),
-    well_edge: Color32::from_rgb(0xBD, 0xBD, 0xC7),
-    lamp_off: Color32::from_rgb(0xCF, 0xCF, 0xD8),
-    lip_shadow_a: 28,
-    light_catch_a: 220,
-    well_shadow_a: 45,
-    well_catch_a: 230,
-    glint_a: 210,
-    print_halo_a: 170,
+    success: Color32::from_rgb(0x1F, 0x7A, 0x46),
+    warning: Color32::from_rgb(0x9A, 0x6A, 0x0A),
+    error: Color32::from_rgb(0xB0, 0x3A, 0x34),
+    lamp_off: Color32::from_rgb(0xC4, 0xC8, 0xD4),
 };
 
 // The active skin. `apply()` records it; every colour is read through
@@ -187,7 +152,7 @@ pub fn tinted(color: Color32, alpha: u8) -> Color32 {
 // ============================================================================
 
 /// Corner radius of every card, button and well, in points.
-pub const RADIUS_PX: u8 = 4;
+pub const RADIUS_PX: u8 = 6;
 
 /// `RADIUS_PX` on all four corners.
 pub const RADIUS: CornerRadius = CornerRadius::same(RADIUS_PX);
@@ -198,6 +163,9 @@ pub const RADIUS: CornerRadius = CornerRadius::same(RADIUS_PX);
 
 /// Stroke width of every border, rule and ring.
 pub const HAIRLINE: f32 = 1.0;
+
+/// Alpha of the shadow of a floating surface.
+const FLOAT_SHADOW_A: u8 = 64;
 
 /// Alpha of the accent wash under a selection.
 const SELECTION_A: u8 = 90;
@@ -215,7 +183,7 @@ pub const GAP_WIDGETS: f32 = 8.0;
 pub const GAP_LABEL: f32 = 4.0;
 
 /// Height of every interactive control.
-pub const CONTROL_H: f32 = 24.0;
+pub const CONTROL_H: f32 = 28.0;
 
 /// Width sliders and combos share so form columns line up.
 pub const FORM_CONTROL_W: f32 = 240.0;
@@ -253,19 +221,19 @@ fn wv(
     }
 }
 
-/// A one-pixel shadow under a lip; never a blur.
-fn hairline_shadow(p: &Palette) -> egui::epaint::Shadow {
+/// The shadow under a window or a menu: soft, and only where something floats.
+fn float_shadow() -> egui::epaint::Shadow {
     egui::epaint::Shadow {
-        offset: [0, 1],
-        blur: 0,
+        offset: [0, 8],
+        blur: 24,
         spread: 0,
-        color: Color32::from_black_alpha(p.lip_shadow_a),
+        color: Color32::from_black_alpha(FLOAT_SHADOW_A),
     }
 }
 
-/// The egui visuals of one skin. Panels are flat, text fields and rails are
-/// sunk in the well, buttons stand on the raised fill, and the accent appears
-/// as a ring on hover and a wash when pressed.
+/// The egui visuals of one skin. Everything is flat: panels and fields are plain fills
+/// with a hairline border, a hovered control takes the raised fill, and the accent
+/// appears as a ring on hover and a wash when pressed.
 pub fn visuals_for(p: &Palette) -> egui::Visuals {
     let mut v = if p.dark {
         egui::Visuals::dark()
@@ -274,22 +242,22 @@ pub fn visuals_for(p: &Palette) -> egui::Visuals {
     };
     v.panel_fill = p.panel;
     v.window_fill = p.panel;
-    v.extreme_bg_color = p.well;
-    v.text_edit_bg_color = Some(p.well);
-    v.code_bg_color = p.well;
+    v.extreme_bg_color = p.field;
+    v.text_edit_bg_color = Some(p.field);
+    v.code_bg_color = p.field;
     v.faint_bg_color = p.raised;
     v.window_stroke = Stroke::new(HAIRLINE, p.border);
     v.window_corner_radius = RADIUS;
     v.menu_corner_radius = RADIUS;
-    v.window_shadow = hairline_shadow(p);
-    v.popup_shadow = hairline_shadow(p);
+    v.window_shadow = float_shadow();
+    v.popup_shadow = float_shadow();
     v.selection.bg_fill = tinted(p.accent, SELECTION_A);
     v.selection.stroke = Stroke::new(HAIRLINE, p.accent);
     v.hyperlink_color = p.accent;
     v.warn_fg_color = p.warning;
     v.error_fg_color = p.error;
     v.widgets.noninteractive = wv(p.panel, p.panel, p.border, p.ink);
-    v.widgets.inactive = wv(p.well, p.raised, p.border, p.ink);
+    v.widgets.inactive = wv(p.field, p.panel, p.border, p.ink);
     v.widgets.hovered = wv(
         p.raised,
         p.raised,
@@ -305,7 +273,7 @@ pub fn visuals_for(p: &Palette) -> egui::Visuals {
     v
 }
 
-/// The spacing and the type scale of one skin: an 8 px grid, 24 px controls,
+/// The spacing and the type scale of one skin: a 4 px grid, 28 px controls,
 /// one form width, five text styles.
 pub fn style_for(_p: &Palette, style: &mut egui::Style) {
     style.text_styles = text::styles();
@@ -326,25 +294,25 @@ pub mod text {
     use std::collections::BTreeMap;
 
     /// A label over or beside a control: capitals, dim. Callers pass capitals.
-    pub const LABEL_PT: f32 = 10.0;
+    pub const LABEL_PT: f32 = 11.0;
     /// A value, a button, a name: the reading size of a control.
-    pub const VALUE_PT: f32 = 12.0;
+    pub const VALUE_PT: f32 = 13.0;
     /// A section title: capitals in the accent.
     pub const SECTION_PT: f32 = 11.0;
     /// Body prose.
     pub const BODY_PT: f32 = 13.0;
     /// The title in a chrome row.
-    pub const TITLE_PT: f32 = 14.0;
+    pub const TITLE_PT: f32 = 16.0;
     /// Monospace readouts.
     pub const MONO_PT: f32 = 12.0;
     /// A dim monospace readout in a chrome tail.
-    pub const READOUT_PT: f32 = 10.0;
+    pub const READOUT_PT: f32 = 11.0;
     /// Prose under a control, and its line pitch.
-    pub const CAPTION_PT: f32 = 8.5;
-    pub const CAPTION_PITCH: f32 = 10.5;
+    pub const CAPTION_PT: f32 = 11.0;
+    pub const CAPTION_PITCH: f32 = 14.0;
     /// Tracked capitals over a hairline, and their letter spacing.
-    pub const HEADING_PT: f32 = 9.5;
-    pub const TRACKING: f32 = 1.5;
+    pub const HEADING_PT: f32 = 11.0;
+    pub const TRACKING: f32 = 1.0;
     /// The icon of an empty state.
     pub const EMPTY_STATE_ICON_PT: f32 = 32.0;
 
@@ -546,12 +514,18 @@ mod tests {
     }
 
     #[test]
-    fn ink_dim_reads_on_the_plate() {
+    fn ink_dim_reads_on_the_hover_fill_and_the_field() {
         for (skin, p) in SKINS {
             assert_contrast(
-                &format!("{skin} ink_dim on plate_top"),
+                &format!("{skin} ink_dim on raised"),
                 p.ink_dim,
-                p.plate_top,
+                p.raised,
+                AA_TEXT,
+            );
+            assert_contrast(
+                &format!("{skin} ink_dim on field"),
+                p.ink_dim,
+                p.field,
                 AA_TEXT,
             );
         }
@@ -584,56 +558,41 @@ mod tests {
     }
 
     #[test]
-    fn the_well_is_sunk_and_the_plate_is_raised() {
-        // Light comes from above in both skins: the well is the darkest
-        // surface, the plate the lightest, and a plate is lighter at its top.
+    fn the_surfaces_step_away_from_the_floor() {
+        // The panel stands one step off the floor and the hover fill one step
+        // further, in the direction the skin lightens: up on dark, up on light too,
+        // since the floor is the dimmest surface of each.
         for (skin, p) in SKINS {
-            let order = [
-                ("well_edge", p.well_edge),
-                ("well", p.well),
-                ("bg", p.bg),
-                ("panel", p.panel),
-                ("plate_top", p.plate_top),
-            ];
-            for pair in order.windows(2) {
-                let (na, a) = pair[0];
-                let (nb, b) = pair[1];
+            let (floor, panel, raised) = (byte_lum(p.bg), byte_lum(p.panel), byte_lum(p.raised));
+            if p.dark {
                 assert!(
-                    byte_lum(a) < byte_lum(b),
-                    "{skin}: {na} must be darker than {nb}"
+                    floor < panel && panel < raised,
+                    "{skin}: floor, panel, raised"
+                );
+            } else {
+                assert!(
+                    panel > floor && floor > raised,
+                    "{skin}: panel, floor, raised"
                 );
             }
             assert!(
-                byte_lum(p.plate_bottom) < byte_lum(p.plate_top),
-                "{skin}: the plate must be lighter at its top"
+                (byte_lum(p.field) - floor).abs() < 1.0,
+                "{skin}: a field is the colour of the floor"
             );
         }
     }
 
     #[test]
-    fn the_ink_reads_against_the_plate() {
+    fn the_ink_is_stronger_than_the_dim_ink() {
         assert!(byte_lum(DARK.ink) > byte_lum(DARK.ink_dim));
-        assert!(byte_lum(DARK.ink_dim) > byte_lum(DARK.plate_top));
+        assert!(byte_lum(DARK.ink_dim) > byte_lum(DARK.panel));
         assert!(byte_lum(LIGHT.ink) < byte_lum(LIGHT.ink_dim));
-        assert!(byte_lum(LIGHT.ink_dim) < byte_lum(LIGHT.plate_bottom));
+        assert!(byte_lum(LIGHT.ink_dim) < byte_lum(LIGHT.panel));
     }
 
     #[test]
     fn the_light_skin_inverts_only_the_ink() {
-        let surfaces = |p: &Palette| {
-            [
-                p.bg,
-                p.panel,
-                p.raised,
-                p.border,
-                p.plate_top,
-                p.plate_bottom,
-                p.plate_edge,
-                p.well,
-                p.well_edge,
-                p.lamp_off,
-            ]
-        };
+        let surfaces = |p: &Palette| [p.bg, p.panel, p.border, p.field, p.lamp_off];
         for (d, l) in surfaces(&DARK).iter().zip(surfaces(&LIGHT).iter()) {
             assert!(
                 byte_lum(*l) > byte_lum(*d),
@@ -655,7 +614,7 @@ mod tests {
         apply(&ctx, false);
         assert!(!is_dark());
         assert_eq!(ctx.global_style().visuals.panel_fill, LIGHT.panel);
-        assert_eq!(ctx.global_style().visuals.extreme_bg_color, LIGHT.well);
+        assert_eq!(ctx.global_style().visuals.extreme_bg_color, LIGHT.field);
         assert_eq!(ctx.global_style().spacing.interact_size.y, CONTROL_H);
         assert_eq!(
             ctx.global_style().text_styles[&egui::TextStyle::Body].size,
@@ -664,7 +623,7 @@ mod tests {
         apply(&ctx, true);
         assert!(is_dark());
         assert_eq!(ctx.global_style().visuals.panel_fill, DARK.panel);
-        assert_eq!(ctx.global_style().visuals.extreme_bg_color, DARK.well);
+        assert_eq!(ctx.global_style().visuals.extreme_bg_color, DARK.field);
         assert_eq!(ctx.global_style().visuals.widgets.hovered.expansion, 0.0);
     }
 }
