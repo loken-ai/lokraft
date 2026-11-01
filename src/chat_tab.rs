@@ -920,24 +920,6 @@ fn render_chat_header(
         }
         ui.add_space(widgets::GAP_WIDGETS);
 
-        // Layer mode: two pills, one seated. There is no third: a "CUDA only"
-        // state would send an option no handler reads.
-        use crate::state::LayerMode;
-        if widgets::selector_pill(ui, "ALL LAYERS", chat.layer_mode == LayerMode::AllLayers)
-            .on_hover_text("All Layers: run every layer (highest quality).")
-            .clicked()
-        {
-            chat.layer_mode = LayerMode::AllLayers;
-        }
-        if widgets::selector_pill(ui, "ADAPTIVE", chat.layer_mode == LayerMode::Adaptive)
-            .on_hover_text(
-                "Adaptive: exit early on high-confidence tokens (faster, slight quality drop).",
-            )
-            .clicked()
-        {
-            chat.layer_mode = LayerMode::Adaptive;
-        }
-
         // Clear, at the right edge. Locked while a reply streams.
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let can_clear = !chat.is_generating

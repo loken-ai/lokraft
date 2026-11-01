@@ -4,6 +4,10 @@ All notable changes to lokraft. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+### Removed
+
+- chat: remove the layer mode toggle, which the server ignored.
+
 ## [0.1.0] - 2026-10-24
 
 ### Added

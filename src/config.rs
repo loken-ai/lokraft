@@ -171,13 +171,6 @@ pub struct AppConfig {
     pub window_maximized: Option<bool>,
     pub profiles: Vec<ApiProfile>,
     pub selected_profile: Option<String>,
-    /// Last-used layer-mode toggle for the chat tab. Persisted so a
-    /// power user who explicitly picked Adaptive for perf doesn't
-    /// have to re-toggle on every GUI launch. `#[serde(default)]`
-    /// keeps older configs (saved before this field was added)
-    /// loading cleanly — they hydrate to LayerMode::AllLayers.
-    #[serde(default)]
-    pub layer_mode: crate::state::LayerMode,
     /// Media Studio parameters, saved at exit so a restart keeps every tuned
     /// setting (kind, prompt, per-kind params). None on first launch.
     #[serde(default)]
@@ -216,7 +209,6 @@ impl Default for AppConfig {
             window_width: Some(1000.0),
             window_height: Some(750.0),
             window_maximized: Some(true),
-            layer_mode: crate::state::LayerMode::default(),
             media: None,
             chat_smart_auto: false,
             sidebar_expanded: true,
@@ -638,53 +630,16 @@ mod tests {
         assert_eq!(back.selected_profile, original.selected_profile);
         assert_eq!(back.server_url, original.server_url);
         assert_eq!(back.dark_theme, original.dark_theme);
-        assert_eq!(back.layer_mode, original.layer_mode);
     }
 
     #[test]
-    fn layer_mode_persists_via_explicit_round_trip() {
-        // The headline contract for the new field: a non-default
-        // LayerMode survives serialize → deserialize so the user's
-        // chat-tab toggle preference carries across GUI launches.
-        let mut original = AppConfig::default();
-        original.layer_mode = crate::state::LayerMode::Adaptive;
-
-        let json = serde_json::to_string(&original).expect("serialize");
-        let back: AppConfig = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(
-            back.layer_mode,
-            crate::state::LayerMode::Adaptive,
-            "Adaptive must survive the round trip — otherwise the chat-tab \
-             toggle resets to AllLayers on every launch"
-        );
-    }
-
-    #[test]
-    fn legacy_config_without_layer_mode_loads_as_default() {
-        // Older saved configs predate the layer_mode field. Pin
-        // that #[serde(default)] keeps them loading cleanly — the
-        // missing field hydrates to LayerMode::default()
-        // (AllLayers) instead of failing the whole deserialize
-        // (which would have triggered the corrupt-config backup
-        // path from 10ffc30 — recoverable but invasive).
-        let legacy_json = r#"{
-            "server_url": "http://localhost:11435",
-            "dark_theme": true,
-            "selected_model": null,
-            "selected_model_source": null,
-            "window_width": 1000.0,
-            "window_height": 750.0,
-            "window_maximized": true,
-            "profiles": [],
-            "selected_profile": null
-        }"#;
-        let parsed: AppConfig = serde_json::from_str(legacy_json)
-            .expect("legacy config (missing layer_mode) must still deserialize");
-        assert_eq!(
-            parsed.layer_mode,
-            crate::state::LayerMode::default(),
-            "missing field hydrates to default, not Err"
-        );
+    fn config_saved_with_a_removed_field_still_loads() {
+        // A config written by a build that still had the layer mode keeps
+        // loading: the unknown field is ignored, not an error.
+        let saved = r#"{ "server_url": "http://localhost:11435", "layer_mode": "Adaptive" }"#;
+        let parsed: AppConfig =
+            serde_json::from_str(saved).expect("a config with a removed field must load");
+        assert_eq!(parsed.server_url, "http://localhost:11435");
     }
 
     /// Make a fresh empty temp dir for save tests. Manual instead of

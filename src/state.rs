@@ -174,30 +174,6 @@ pub struct MessageTiming {
     pub token_count: u32,
 }
 
-/// Layer processing mode: determines which layers are used during inference.
-///
-/// Only two modes survive because they map to options the live request
-/// path (`/api/chat`, `/v1/chat/completions`) actually honors:
-///   - AllLayers — no extra options; the engine runs every layer.
-///   - Adaptive — sends `early_exit_threshold: 0.1`; the engine may exit
-///     early on high-confidence tokens.
-///
-/// There is deliberately no "CUDA only" mode. The flag it would send is not read
-/// by any request handler - the underlying switch applies at load time - so the
-/// toggle would be clickable and inert, which is a worse failure than stating the
-/// limitation.
-// serde derives so AppConfig can persist the user's last-picked
-// layer mode across GUI launches. Without these, power users who
-// explicitly chose Adaptive for perf would have to re-toggle on
-// every startup (the chat-tab toggle's state lived only on
-// ChatState, which is built fresh from Default each launch).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub enum LayerMode {
-    #[default]
-    AllLayers, // Process every layer (normal, highest quality)
-    Adaptive, // Exit early if confident (sends early_exit_threshold)
-}
-
 /// Chat tab state
 #[derive(Debug, Clone, Default)]
 pub struct ChatState {
@@ -226,8 +202,6 @@ pub struct ChatState {
     pub generation_abort: Option<tokio::task::AbortHandle>,
     /// Streaming content being generated (partial response)
     pub streaming_content: String,
-    /// Layer processing mode: which layers to use
-    pub layer_mode: LayerMode,
     /// Attached images for the next message (base64-encoded).
     ///
     /// **Invariant**: `attached_images.len() == attached_image_paths.len()`

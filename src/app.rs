@@ -713,11 +713,6 @@ impl LLMGuiApp {
             app.config.server_url = url;
         }
 
-        // Hydrate the chat tab's layer-mode toggle from the
-        // persisted config. The default is AllLayers, so this is what carries a
-        // user's choice of Adaptive across a launch. Settings writes changes back
-        // through the config-diff path.
-        app.chat.layer_mode = app.config.layer_mode;
         app.chat.smart_auto = app.config.chat_smart_auto;
 
         // Restore the Media Studio parameters saved at last exit.
@@ -1902,11 +1897,6 @@ impl LLMGuiApp {
 
         // Get parameters from current profile
         let mut options = self.get_chat_options();
-
-        // Map LayerMode to request options via a pure helper so the
-        // mapping has a unit-test surface (regression guard against
-        // re-introducing dead options the server doesn't read).
-        apply_layer_mode_options(&mut options, self.chat.layer_mode);
 
         // Image-gen re-roll: if the user clicked "Lock seed" on a
         // previous gen's badge, thread that seed into options.seed
@@ -3444,14 +3434,6 @@ impl eframe::App for LLMGuiApp {
                             self.config.save();
                         }
 
-                        // Persist a layer-mode toggle the same way. Cheap
-                        // Copy-type equality check, save only on change
-                        // — so a steady-state idle render doesn't churn
-                        // the config file every frame.
-                        if self.chat.layer_mode != self.config.layer_mode {
-                            self.config.layer_mode = self.chat.layer_mode;
-                            self.config.save();
-                        }
                         if self.chat.smart_auto != self.config.chat_smart_auto {
                             self.config.chat_smart_auto = self.chat.smart_auto;
                             self.config.save();
@@ -3794,25 +3776,6 @@ impl eframe::App for LLMGuiApp {
     }
 }
 
-/// Translate `LayerMode` into the `options` JSON that the server
-/// actually understands. `Adaptive` adds `early_exit_threshold: 0.1`;
-/// `AllLayers` is a no-op (the engine default).
-///
-/// Lives outside `LLMGuiApp` so it has a unit-test surface — see
-/// `mod tests::apply_layer_mode_options_*`. A previous third variant
-/// ("CudaOnly") sent `cuda_only: true` here even though no request
-/// handler ever read it; that mistake is the reason this helper now
-/// has explicit tests.
-fn apply_layer_mode_options(
-    options: &mut Option<serde_json::Value>,
-    mode: crate::state::LayerMode,
-) {
-    if !matches!(mode, crate::state::LayerMode::Adaptive) {
-        return;
-    }
-    insert_option_field(options, "early_exit_threshold", serde_json::json!(0.1));
-}
-
 /// Insert `value` at `key` in the chat-request `options` object.
 ///
 /// Used by `send_chat` to thread image-gen / TTS overrides into the
@@ -3827,8 +3790,7 @@ fn apply_layer_mode_options(
 ///   }
 ///
 /// — which had ~6 copies in `send_chat` alone (seed, num_steps,
-/// strength, width+height, voice, speed) plus the
-/// `apply_layer_mode_options` helper above.
+/// strength, width+height, voice, speed).
 fn insert_option_field(
     options: &mut Option<serde_json::Value>,
     key: &str,
@@ -3852,7 +3814,6 @@ fn insert_option_field(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::LayerMode;
     use serde_json::json;
 
     // -- Media Studio: speech over the event stream -----------------
@@ -4052,55 +4013,6 @@ mod tests {
     }
 
     #[test]
-    fn apply_layer_mode_options_all_layers_leaves_none_alone() {
-        // AllLayers must NOT lazily allocate an empty options object —
-        // the chat path treats `None` as "use server defaults" and
-        // returning Some({}) would override a no-op with an empty
-        // object, which downstream Ollama-shape mergers may treat
-        // differently.
-        let mut opts: Option<serde_json::Value> = None;
-        apply_layer_mode_options(&mut opts, LayerMode::AllLayers);
-        assert!(opts.is_none(), "AllLayers should not allocate options");
-    }
-
-    #[test]
-    fn apply_layer_mode_options_all_layers_leaves_existing_object_alone() {
-        // AllLayers must not strip or mutate options the caller has
-        // already put in. (Otherwise toggling away from Adaptive
-        // mid-session could drop temperature/top_p/etc.)
-        let mut opts = Some(json!({"temperature": 0.7, "seed": 42}));
-        apply_layer_mode_options(&mut opts, LayerMode::AllLayers);
-        let obj = opts.as_ref().and_then(|v| v.as_object()).unwrap();
-        assert_eq!(obj.get("temperature"), Some(&json!(0.7)));
-        assert_eq!(obj.get("seed"), Some(&json!(42)));
-        assert!(!obj.contains_key("early_exit_threshold"));
-        assert!(
-            !obj.contains_key("cuda_only"),
-            "cuda_only must never appear — server never read it"
-        );
-    }
-
-    #[test]
-    fn apply_layer_mode_options_adaptive_creates_options_when_absent() {
-        let mut opts: Option<serde_json::Value> = None;
-        apply_layer_mode_options(&mut opts, LayerMode::Adaptive);
-        let obj = opts.as_ref().and_then(|v| v.as_object()).unwrap();
-        assert_eq!(obj.get("early_exit_threshold"), Some(&json!(0.1)));
-    }
-
-    #[test]
-    fn apply_layer_mode_options_adaptive_merges_into_existing_options() {
-        let mut opts = Some(json!({"temperature": 0.7, "seed": 42}));
-        apply_layer_mode_options(&mut opts, LayerMode::Adaptive);
-        let obj = opts.as_ref().and_then(|v| v.as_object()).unwrap();
-        // Original values preserved.
-        assert_eq!(obj.get("temperature"), Some(&json!(0.7)));
-        assert_eq!(obj.get("seed"), Some(&json!(42)));
-        // New option added.
-        assert_eq!(obj.get("early_exit_threshold"), Some(&json!(0.1)));
-    }
-
-    #[test]
     fn insert_option_field_creates_object_when_options_none() {
         let mut opts: Option<serde_json::Value> = None;
         insert_option_field(&mut opts, "seed", json!(42));
@@ -4150,24 +4062,6 @@ mod tests {
             Some(json!(42)),
             "non-object options should be left alone"
         );
-    }
-
-    #[test]
-    fn apply_layer_mode_options_never_emits_cuda_only() {
-        // A guard, not a formality: `{"cuda_only": true}` is read by no request
-        // handler, so emitting it would give the user a control that does nothing.
-        // A patch that introduces the option must wire it to the engine first, and
-        // will have to update this test to do so.
-        for mode in [LayerMode::AllLayers, LayerMode::Adaptive] {
-            let mut opts: Option<serde_json::Value> = None;
-            apply_layer_mode_options(&mut opts, mode);
-            if let Some(obj) = opts.as_ref().and_then(|v| v.as_object()) {
-                assert!(
-                    !obj.contains_key("cuda_only"),
-                    "mode {mode:?} must not emit cuda_only — the server never read it"
-                );
-            }
-        }
     }
 }
 
