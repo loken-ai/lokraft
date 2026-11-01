@@ -6,6 +6,7 @@ All notable changes to lokraft. The format follows [Keep a Changelog](https://ke
 
 ### Added
 
+- studio: cancel an image, MIDI, edit, split or transcription render before it ends.
 - ui: confirm every copy with a toast.
 - chat: edit the generation parameters from a panel, each sent only once set.
 - connections: replace the API profiles with a list of connections, switched from the top bar.

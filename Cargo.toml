@@ -40,6 +40,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5", features = ["derive"] }
 thiserror = "2.0"
+# Names a render before it starts, so Cancel can address it.
+uuid = { version = "1.0", features = ["v4"] }
 anyhow = "1.0"
 
 # `wayland` and `x11` are the LINUX platform backends: without one of them the
@@ -50,9 +52,6 @@ anyhow = "1.0"
 eframe = { version = "0.35", default-features = false, features = ["glow", "default_fonts", "wayland", "x11", "inspection"] }
 
 [dev-dependencies]
-# Tests only - temporary directory naming for parallel isolation. Kept out of the
-# regular dependencies so release builds do not link it.
-uuid = { version = "1.0", features = ["v4"] }
 # Headless egui harness reading the AccessKit tree: drives the Media Studio panels
 # so a broken kind or arm is caught without a display server.
 egui_kittest = { version = "0.35.0", features = ["wgpu", "snapshot", "eframe"] }

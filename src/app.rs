@@ -139,6 +139,17 @@ fn validate_enhanced_prompt(text: &str, original: &str) -> Result<String, String
     Ok(t.to_string())
 }
 
+/// Name a render before it starts and publish the name for Cancel.
+///
+/// The client sends it as `X-Request-Id`, so the server registers the render under it and
+/// Cancel can stop one whose response has not begun, which every one-shot route is until
+/// it ends.
+fn begin_render(render_id: &Arc<Mutex<Option<String>>>) -> String {
+    let id = uuid::Uuid::new_v4().to_string();
+    *render_id.lock().unwrap() = Some(id.clone());
+    id
+}
+
 /// funnel its `Result` into the shared task queue as a `MediaResult`,
 /// waking the UI. Sibling of `stream_media` for the kinds without SSE
 /// progress — keeps each `send_media` arm down to building its future.
@@ -186,6 +197,7 @@ async fn stream_media(
     // Read before the body moves into the request: the batch size is what turns n
     // variations into one bar instead of n.
     let batch = body.get("n").and_then(|x| x.as_u64()).unwrap_or(1).max(1);
+    let client = client.with_request_id(&begin_render(&render_id));
     let result = match client.post_stream(path, body).await {
         Ok(response) => {
             consume_media_stream(
@@ -491,6 +503,7 @@ async fn stream_speech(
 ) {
     // The plain body is the streamed one minus the field, so the fallback re-sends what
     // the user asked for rather than a second reading of it.
+    let client = client.with_request_id(&begin_render(&render_id));
     let plain = body.clone();
     let mut streamed = body;
     streamed["stream_format"] = serde_json::json!("sse");
@@ -1141,9 +1154,11 @@ impl LLMGuiApp {
                     "top_p": top_p,
                     "seed": seed_val,
                 });
+                let render_id = self.media.render_id.clone();
                 self.media.generation_abort =
                     Some(spawn_media_result(&self.rt, tasks, egui_ctx, async move {
                         client
+                            .with_request_id(&begin_render(&render_id))
                             .audio_generate(body)
                             .await
                             .map(|data| media_data_to_output(data, "MIDI generated.".to_string()))
@@ -1208,6 +1223,7 @@ impl LLMGuiApp {
                 let p = self.media.image_edit.clone();
                 let partial_tasks = tasks.clone();
                 let partial_ctx = egui_ctx.clone();
+                let render_id = self.media.render_id.clone();
                 self.media.generation_abort =
                     Some(spawn_media_result(&self.rt, tasks, egui_ctx, async move {
                         let Some((name, bytes)) = p.source else {
@@ -1215,6 +1231,7 @@ impl LLMGuiApp {
                         };
                         if p.n <= 1 {
                             return client
+                                .with_request_id(&begin_render(&render_id))
                                 .images_edit(
                                     &p.model,
                                     &prompt,
@@ -1243,6 +1260,7 @@ impl LLMGuiApp {
                         let (mut ms_sum, mut j_sum) = (0u64, 0f64);
                         for i in 0..p.n {
                             let (mut imgs, ms, j) = client
+                                .clone_with_request_id(&begin_render(&render_id))
                                 .images_edit(
                                     &p.model,
                                     &prompt,
@@ -1291,12 +1309,14 @@ impl LLMGuiApp {
             }
             MediaKind::Separate => {
                 let p = self.media.separate.clone();
+                let render_id = self.media.render_id.clone();
                 self.media.generation_abort =
                     Some(spawn_media_result(&self.rt, tasks, egui_ctx, async move {
                         let Some((name, bytes)) = p.audio else {
                             return Err("Choose the track to split first.".to_string());
                         };
                         let stems = client
+                            .with_request_id(&begin_render(&render_id))
                             .audio_separate(&name, bytes, p.stems.wire())
                             .await
                             .map_err(|e| e.to_string())?;
@@ -1310,10 +1330,12 @@ impl LLMGuiApp {
             }
             MediaKind::Transcribe => {
                 let p = self.media.transcribe.clone();
+                let render_id = self.media.render_id.clone();
                 self.media.generation_abort =
                     Some(spawn_media_result(&self.rt, tasks, egui_ctx, async move {
                         match p.audio {
                             Some((name, bytes)) => client
+                                .with_request_id(&begin_render(&render_id))
                                 .audio_transcribe(&p.model, &name, bytes, p.translate, &p.language)
                                 .await
                                 .map(|text| MediaOutput {

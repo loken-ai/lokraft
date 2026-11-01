@@ -14,6 +14,8 @@ pub struct Client {
     /// Separate client for server-sent-event endpoints - see `post_stream` for why a
     /// streaming request must not carry the one-shot client's total deadline.
     stream_client: reqwest::Client,
+    /// Name the next render requests are sent under, as `X-Request-Id`.
+    request_id: Option<String>,
 }
 
 /// How long a stream may go SILENT before it is considered dead.
@@ -188,6 +190,35 @@ impl Client {
             base_url: normalise_base_url(base_url),
             http_client,
             stream_client,
+            request_id: None,
+        }
+    }
+
+    /// Client whose render requests carry `id` as `X-Request-Id`.
+    ///
+    /// The server registers the render under that name, so `cancel_render` can stop it
+    /// before any response has started. Without it a one-shot route only names the render
+    /// when it is already over.
+    pub fn with_request_id(mut self, id: &str) -> Self {
+        self.request_id = Some(id.to_string());
+        self
+    }
+
+    /// Copy of this client that sends `id` as `X-Request-Id`, leaving `self` usable for
+    /// the next request of a loop.
+    pub fn clone_with_request_id(&self, id: &str) -> Self {
+        Self {
+            base_url: self.base_url.clone(),
+            http_client: self.http_client.clone(),
+            stream_client: self.stream_client.clone(),
+            request_id: Some(id.to_string()),
+        }
+    }
+
+    fn stamp(&self, request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        match &self.request_id {
+            Some(id) => request.header("X-Request-Id", id),
+            None => request,
         }
     }
 
@@ -694,8 +725,7 @@ impl Client {
         }
         info!("POST {} (edit model={}, strength={})", url, model, strength);
         let response = self
-            .http_client
-            .post(&url)
+            .stamp(self.http_client.post(&url))
             .multipart(form)
             .timeout(Duration::from_secs(900))
             .send()
@@ -738,8 +768,7 @@ impl Client {
         }
         info!("POST {} ({} bytes)", url, file_name);
         let response = self
-            .http_client
-            .post(&url)
+            .stamp(self.http_client.post(&url))
             .multipart(form)
             .timeout(Duration::from_secs(600))
             .send()
@@ -769,8 +798,7 @@ impl Client {
             .text("stems", stems.to_string());
         info!("POST {url} (stems={stems})");
         let response = self
-            .http_client
-            .post(&url)
+            .stamp(self.http_client.post(&url))
             .multipart(form)
             // Separation runs a transformer over the whole track, so it is minutes for
             // a long song, not seconds.
@@ -808,8 +836,7 @@ impl Client {
         let url = format!("{}/v1/audio/generations", self.base_url);
         info!("POST {} (audio/midi generation)", url);
         let response = self
-            .http_client
-            .post(&url)
+            .stamp(self.http_client.post(&url))
             .json(&body)
             .timeout(Duration::from_secs(900))
             .send()
@@ -934,7 +961,11 @@ impl Client {
     ) -> Result<reqwest::Response, ClientError> {
         info!("POST {}{} (stream)", self.base_url, path);
         let url = format!("{}{}", self.base_url, path);
-        let response = self.stream_client.post(&url).json(&body).send().await?;
+        let response = self
+            .stamp(self.stream_client.post(&url))
+            .json(&body)
+            .send()
+            .await?;
         Self::check_status(response, path).await
     }
 
@@ -1082,6 +1113,25 @@ impl From<reqwest::Error> for ClientError {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_named_client_sends_the_request_id_header() {
+        let client = Client::new("http://localhost").with_request_id("abc-1");
+        let request = client
+            .stamp(client.http_client.post("http://localhost/x"))
+            .build()
+            .unwrap();
+        assert_eq!(request.headers()["x-request-id"], "abc-1");
+    }
+
+    #[test]
+    fn an_unnamed_client_sends_no_request_id() {
+        let client = Client::new("http://localhost");
+        let request = client
+            .stamp(client.http_client.post("http://localhost/x"))
+            .build()
+            .unwrap();
+        assert!(request.headers().get("x-request-id").is_none());
+    }
 
     /// The cost estimate must ask the route the server serves.
     ///
