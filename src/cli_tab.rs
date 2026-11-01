@@ -60,11 +60,7 @@ pub fn render(ui: &mut egui::Ui, cli: &mut CLIState, _models: &ModelState) {
             );
             ui.label(text::title("Terminal"));
             ui.add_space(widgets::GAP_WIDGETS);
-            ui.label(text::label("COMMANDS"));
-            for (entry, _) in COMMAND_HELP {
-                let cmd = entry.split_whitespace().next().unwrap_or(entry);
-                ui.label(text::readout(cmd));
-            }
+            ui.label(text::note("Type help to list the commands."));
         });
         ui.add_space(widgets::GAP_WIDGETS);
 
@@ -135,9 +131,8 @@ fn render_input_area(ui: &mut egui::Ui, cli: &mut CLIState) {
     });
 }
 
-/// One entry: the timestamp, the prompt and the command on a line, the output
-/// under it, a stripe in the error colour when it failed and in the accent
-/// while it runs.
+/// One entry: the timestamp, the prompt and the command on a line, the output under it.
+/// A failed entry is tinted in the error color, and a running one in the accent.
 fn render_output(ui: &mut egui::Ui, output: &CLIOutput) {
     let tint = if output.is_error {
         Some(theme::error())
@@ -146,7 +141,12 @@ fn render_output(ui: &mut egui::Ui, output: &CLIOutput) {
     } else {
         None
     };
-    let row = egui::Frame::NONE
+    let fill = tint
+        .map(|t| theme::tinted(t, ENTRY_WASH_A))
+        .unwrap_or(egui::Color32::TRANSPARENT);
+    egui::Frame::NONE
+        .fill(fill)
+        .corner_radius(theme::RADIUS)
         .inner_margin(egui::Margin::symmetric(ROW_PAD_X, ROW_PAD_Y))
         .show(ui, |ui| {
             ui.set_min_width(ui.available_width());
@@ -170,10 +170,10 @@ fn render_output(ui: &mut egui::Ui, output: &CLIOutput) {
             };
             ui.add(egui::Label::new(text::mono(&output.output).color(ink)).selectable(true));
         });
-    if let Some(tint) = tint {
-        widgets::stripe(ui, row.response.rect, tint);
-    }
 }
+
+/// Alpha of the wash under a failed or running entry.
+const ENTRY_WASH_A: u8 = 22;
 
 /// CLI command types and parsing
 #[derive(Debug)]
