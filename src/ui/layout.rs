@@ -101,7 +101,7 @@ const NAV_ITEMS: &[NavItem] = &[
     NavItem {
         icon: NavIcon::Svg(Icon::Server),
         label: "Logs",
-        tip: "Live server log stream with level + search filters.",
+        tip: "This app's own log, with level and search filters.",
         section: Section::ServerLog,
     },
 ];
