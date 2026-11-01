@@ -26,10 +26,17 @@ const ICON_PT: f32 = 14.0;
 /// Width of the filter field, and of the cells beside it.
 const FILTER_W: f32 = 200.0;
 const SORT_DIR_W: f32 = 40.0;
-/// Fixed cells in a model row: modality, source, size.
+/// Fixed cells in a model row: kind, source, size, state, and the room kept for the
+/// actions. The name takes what is left, and the lamp is one more cell.
 const MODALITY_W: f32 = 72.0;
-const SOURCE_W: f32 = 48.0;
-const SIZE_W: f32 = 64.0;
+const SOURCE_W: f32 = 56.0;
+const SIZE_W: f32 = 72.0;
+const STATE_W: f32 = 64.0;
+const ACTIONS_W: f32 = 140.0;
+const NAME_MIN_W: f32 = 140.0;
+/// The lamp, the 5 fixed cells and the gaps between the 7 cells of a row.
+const COLUMNS_W: f32 =
+    16.0 + MODALITY_W + SOURCE_W + SIZE_W + STATE_W + ACTIONS_W + 6.0 * widgets::GAP_WIDGETS;
 /// Padding inside a model row.
 const ROW_PAD_X: i8 = 12;
 const ROW_PAD_Y: i8 = 6;
@@ -269,6 +276,25 @@ pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction>
                     }
                     return;
                 }
+                // The column headings, on the same widths as the rows.
+                egui::Frame::NONE
+                    .inner_margin(egui::Margin::symmetric(ROW_PAD_X, ROW_PAD_Y))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            let name_w = (ui.available_width() - COLUMNS_W).max(NAME_MIN_W);
+                            ui.add_space(16.0 + widgets::GAP_WIDGETS);
+                            widgets::fixed_label(ui, name_w, text::label("NAME"));
+                            widgets::fixed_label(ui, MODALITY_W, text::label("KIND"));
+                            widgets::fixed_label(ui, SOURCE_W, text::label("SOURCE"));
+                            widgets::fixed_label(ui, SIZE_W, text::label("SIZE"));
+                            widgets::fixed_label(ui, STATE_W, text::label("STATE"));
+                        });
+                    });
+                ui.painter().hline(
+                    ui.min_rect().x_range(),
+                    ui.cursor().top(),
+                    egui::Stroke::new(HAIRLINE, theme::border()),
+                );
                 for (model, modality) in &visible_pairs {
                     let modality = *modality;
                     let is_loaded = models.is_loaded(&model.name);
@@ -293,32 +319,37 @@ pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction>
                         .show(ui, |ui| {
                             ui.set_min_width(ui.available_width());
                             ui.horizontal(|ui| {
+                                let name_w = (ui.available_width() - COLUMNS_W).max(NAME_MIN_W);
                                 widgets::lamp_inline(ui, is_loaded, theme::success())
                                     .on_hover_text(if is_loaded {
                                         "Loaded in memory"
                                     } else {
                                         "On disk, not loaded"
                                     });
-                                ui.label(text::value(&model.name));
-                                if modality != ModelModality::Text {
-                                    widgets::fixed_label(
-                                        ui,
-                                        MODALITY_W,
-                                        text::note(modality.label()),
-                                    )
+                                widgets::fixed_label(ui, name_w, text::value(&model.name))
+                                    .on_hover_text(&model.name);
+                                widgets::fixed_label(ui, MODALITY_W, text::note(modality.label()))
                                     .on_hover_text(modality.tooltip());
-                                }
-                                if !model.source.is_empty() {
-                                    let src_label = match model.source.as_str() {
-                                        "ollama" => "Ollama",
-                                        "huggingface" => "HF",
-                                        other => other,
-                                    };
-                                    widgets::fixed_label(ui, SOURCE_W, text::note(src_label))
-                                        .on_hover_ui(|ui| {
-                                            ui.label(format!("Source registry: {}", model.source));
-                                        });
-                                }
+                                let src_label = match model.source.as_str() {
+                                    "ollama" => "Ollama",
+                                    "huggingface" => "HF",
+                                    other => other,
+                                };
+                                widgets::fixed_label(ui, SOURCE_W, text::note(src_label))
+                                    .on_hover_ui(|ui| {
+                                        ui.label(format!("Source registry: {}", model.source));
+                                    });
+                                widgets::readout(ui, SIZE_W, &model.size);
+                                let (state, ink) = if is_loaded {
+                                    ("Loaded", theme::success())
+                                } else {
+                                    ("On disk", theme::ink_dim())
+                                };
+                                widgets::fixed_label(
+                                    ui,
+                                    STATE_W,
+                                    text::note(state).color(ink),
+                                );
 
                                 // The actions, in the tail. Load waits on any action in
                                 // flight; Unload never does, it is what a user reaches for
@@ -380,8 +411,6 @@ pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction>
                                                 ));
                                             }
                                         }
-                                        ui.add_space(widgets::GAP_LABEL);
-                                        widgets::readout(ui, SIZE_W, &model.size);
                                     },
                                 );
                             });
