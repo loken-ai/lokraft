@@ -433,18 +433,19 @@ pub fn render(
             egui::vec2(ui.available_width(), output_height),
             egui::Sense::hover(),
         );
-        surface::recess(ui, well_rect, surface::WELL_RADIUS);
-        // The list is top-anchored in the well; it follows its tail only while
-        // a reply streams.
+        // The list is top-anchored; it follows its tail only while a reply streams.
         let mut list = ui.new_child(
             egui::UiBuilder::new()
-                .max_rect(well_rect.shrink(widgets::SECTION_PADDING))
+                .max_rect(well_rect)
                 .layout(egui::Layout::top_down(egui::Align::LEFT)),
         );
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .stick_to_bottom(chat.is_generating)
             .show(&mut list, |ui| {
+              ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                ui.set_max_width(READING_W.min(ui.available_width()));
+                ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
 
                 if chat.messages.is_empty() && !chat.is_generating {
                     // Three distinct empty states:
@@ -614,7 +615,7 @@ pub fn render(
                             &chat.pending_dialog, &chat.dialog_in_flight,
                             &seed_lock_request, &play_error_pending,
                         );
-                        ui.add_space(4.0);
+                        ui.add_space(MESSAGE_GAP);
                     }
                     if let Some(seed) = seed_lock_request.get() {
                         chat.locked_seed = Some(seed);
@@ -626,7 +627,7 @@ pub fn render(
                     if chat.is_generating {
                         if !chat.streaming_content.is_empty() {
                             render_streaming_message(ui, &chat.streaming_content, &chat.image_gen_progress, chat.image_gen_started_at, md_cache);
-                            ui.add_space(4.0);
+                            ui.add_space(MESSAGE_GAP);
                         } else {
                             // Modality-aware indicator — tells the user
                             // what KIND of generation is happening even
@@ -643,6 +644,8 @@ pub fn render(
                         }
                     }
                 }
+                });
+              });
             });
 
         ui.add_space(8.0);
@@ -655,10 +658,12 @@ pub fn render(
         // post-send.
         let model_selected =
             crate::modality::composer_has_target(chat.smart_auto, models.selected_model.as_deref());
-        let send_clicked = render_input_area(
-            ui, chat, image_textures, modality, model_selected,
-            input_rows,
-        );
+        let send_clicked = ui
+            .vertical_centered(|ui| {
+                ui.set_max_width(READING_W.min(ui.available_width()));
+                render_input_area(ui, chat, image_textures, modality, model_selected, input_rows)
+            })
+            .inner;
         // Stash whether the button was clicked so we can propagate it out
         // of the closure boundary below.
         ui.ctx().memory_mut(|m| {
@@ -1543,38 +1548,60 @@ fn chip_frame() -> egui::Frame {
         .inner_margin(widgets::GAP_LABEL as i8)
 }
 
-/// The shell of a message row: a full-width frame in the role's fill, a
-/// stripe in the role's tint, the role in capitals and the timestamp on the
-/// first line. `body` draws the rest.
+/// How a message is drawn. The assistant writes on the floor, the user speaks from a
+/// bubble, and a notice sits in a bordered panel under its own colour.
+#[derive(Clone, Copy)]
+enum RowStyle {
+    User,
+    Assistant,
+    Notice(Color32),
+}
+
+/// The shell of a message: who spoke and when on the first line, then `body`.
 fn message_row(
     ui: &mut egui::Ui,
-    fill: Color32,
-    tint: Color32,
-    role_caps: &str,
+    style: RowStyle,
+    role_name: &str,
     timestamp: &str,
     body: impl FnOnce(&mut egui::Ui),
 ) {
-    let row = egui::Frame::NONE
-        .fill(fill)
-        .corner_radius(theme::RADIUS)
-        .inner_margin(egui::Margin::symmetric(MESSAGE_PAD_X, MESSAGE_PAD_Y))
-        .show(ui, |ui| {
-            ui.set_min_width(ui.available_width());
-            ui.horizontal(|ui| {
-                ui.label(text::label(role_caps));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(text::readout(timestamp));
-                });
-            });
-            ui.add_space(widgets::GAP_LABEL);
-            body(ui);
+    let name_ink = match style {
+        RowStyle::User => theme::ink(),
+        RowStyle::Assistant => theme::accent(),
+        RowStyle::Notice(tint) => tint,
+    };
+    let frame = match style {
+        RowStyle::User => egui::Frame::NONE
+            .fill(theme::raised())
+            .corner_radius(MESSAGE_BUBBLE_RADIUS)
+            .inner_margin(egui::Margin::symmetric(MESSAGE_PAD_X, MESSAGE_PAD_Y)),
+        RowStyle::Assistant => egui::Frame::NONE,
+        RowStyle::Notice(_) => egui::Frame::NONE
+            .fill(theme::panel())
+            .stroke(egui::Stroke::new(HAIRLINE, theme::border()))
+            .corner_radius(theme::RADIUS)
+            .inner_margin(egui::Margin::symmetric(MESSAGE_PAD_X, MESSAGE_PAD_Y)),
+    };
+    ui.vertical(|ui| {
+        ui.horizontal(|ui| {
+            ui.label(text::value(role_name).color(name_ink));
+            if !timestamp.is_empty() {
+                ui.label(text::readout(timestamp));
+            }
         });
-    widgets::stripe(ui, row.response.rect, tint);
+        ui.add_space(widgets::GAP_LABEL);
+        frame.show(ui, |ui| body(ui));
+    });
 }
 
-/// Padding inside a message row.
+/// Padding inside a bubble or a notice, and the corner radius of a bubble.
 const MESSAGE_PAD_X: i8 = 12;
 const MESSAGE_PAD_Y: i8 = 8;
+const MESSAGE_BUBBLE_RADIUS: u8 = 12;
+/// Widest a line of a conversation gets. Longer lines are harder to follow.
+const READING_W: f32 = 720.0;
+/// Space between 2 messages.
+const MESSAGE_GAP: f32 = 16.0;
 
 /// One message. The role decides the fill and the tint of the stripe: the
 /// assistant on the panel in the accent, the user raised in dim ink, a system
@@ -1595,18 +1622,18 @@ fn render_message(
     let is_user = msg.role == "user";
     let is_system = msg.role == "system";
     let is_error = is_system && is_error_system_message(&msg.content);
-    let (fill, tint, role_caps) = if is_user {
-        (theme::raised(), theme::ink_dim(), "YOU")
+    let (style, role_name) = if is_user {
+        (RowStyle::User, "You")
     } else if is_error {
-        (theme::panel(), theme::error(), "ERROR")
+        (RowStyle::Notice(theme::error()), "Error")
     } else if is_system {
-        (theme::panel(), theme::warning(), "SYSTEM")
+        (RowStyle::Notice(theme::warning()), "System")
     } else {
-        (theme::panel(), theme::accent(), "ASSISTANT")
+        (RowStyle::Assistant, "Assistant")
     };
     let text_color = theme::ink();
 
-    message_row(ui, fill, tint, role_caps, &msg.timestamp, |ui| {
+    message_row(ui, style, role_name, &msg.timestamp, |ui| {
         // Attached files: images open in the viewer as one set, audio gets a chip.
         if !msg.images.is_empty() {
             let mut img_texes: Vec<egui::TextureHandle> = Vec::new();
@@ -1930,7 +1957,7 @@ fn render_streaming_message(
     // arrived the lamp says so.
     let (thinking, answer) = split_thinking(content);
     let still_thinking = thinking.is_some() && answer.is_empty();
-    message_row(ui, theme::panel(), theme::accent(), "ASSISTANT", "", |ui| {
+    message_row(ui, RowStyle::Assistant, "Assistant", "", |ui| {
         ui.horizontal(|ui| {
             widgets::lamp_inline(ui, true, theme::accent());
             ui.label(text::label(if still_thinking {
@@ -2197,8 +2224,8 @@ mod tests {
                 )
             })
             .collect();
-        assert!(labels.iter().any(|l| l == "YOU"), "{labels:?}");
-        assert!(labels.iter().any(|l| l == "ASSISTANT"), "{labels:?}");
+        assert!(labels.iter().any(|l| l == "You"), "{labels:?}");
+        assert!(labels.iter().any(|l| l == "Assistant"), "{labels:?}");
     }
 
     /// A reply that opens with a thought shows it under its own word, and the
