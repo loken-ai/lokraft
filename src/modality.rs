@@ -367,6 +367,23 @@ pub(crate) fn chat_send_allowed(
     }
 }
 
+/// The modality the composer follows. Under Auto the server picks the model per
+/// prompt, so the picker's selection decides nothing and the composer acts as for text.
+pub(crate) fn composer_modality(smart_auto: bool, selected: Option<&str>) -> ModelModality {
+    if smart_auto {
+        return ModelModality::Text;
+    }
+    selected
+        .map(ModelModality::from_model_name)
+        .unwrap_or(ModelModality::Text)
+}
+
+/// Whether the composer has somewhere to send to: Auto routes by itself, otherwise a
+/// model must be selected.
+pub(crate) fn composer_has_target(smart_auto: bool, selected: Option<&str>) -> bool {
+    smart_auto || selected.is_some()
+}
+
 /// Format `CHAT_ATTACHMENT_MAX_BYTES` as a human-readable string
 /// for the rejection message. Kept in MB to match the
 /// server-side error wording so the two surfaces use the same
@@ -707,6 +724,20 @@ mod tests {
                 "round-trip drift: formatted={formatted:?} parsed={parsed:?} expected=({c}, {n})"
             );
         }
+    }
+
+    #[test]
+    fn under_auto_the_composer_ignores_the_picked_model() {
+        // A video or transcription checkpoint left in the picker must not block Send
+        // when Auto routes the turn.
+        assert_eq!(
+            composer_modality(true, Some("some-video-checkpoint")),
+            ModelModality::Text
+        );
+        assert!(composer_has_target(true, None));
+        assert!(!composer_has_target(false, None));
+        assert!(composer_has_target(false, Some("m")));
+        assert_eq!(composer_modality(false, None), ModelModality::Text);
     }
 
     // ── chat_send_allowed ──────────────────────────────────────────

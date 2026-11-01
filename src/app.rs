@@ -3482,7 +3482,10 @@ impl eframe::App for LLMGuiApp {
                         // path the chat-tab UI already gates on.
                         let input_empty = self.chat.input.trim().is_empty();
                         let has_attachment = !self.chat.attached_images.is_empty();
-                        let model_selected = self.models.selected_model.is_some();
+                        let model_selected = crate::modality::composer_has_target(
+                            self.chat.smart_auto,
+                            self.models.selected_model.as_deref(),
+                        );
                         let should_send = (enter_pressed || send_clicked)
                             && model_selected
                             && !is_generating

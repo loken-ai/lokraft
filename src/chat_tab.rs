@@ -126,11 +126,8 @@ pub fn render(
     // empty-state copy, typing indicator, and the input-area
     // tooltips; also returned to app.rs so its post-render send-
     // gate can skip a second classifier call.
-    let modality = models
-        .selected_model
-        .as_deref()
-        .map(ModelModality::from_model_name)
-        .unwrap_or(ModelModality::Text);
+    let modality =
+        crate::modality::composer_modality(chat.smart_auto, models.selected_model.as_deref());
 
     // Drain any file-dialog result a worker thread produced since last
     // frame. Applied before drag-and-drop / rest of render so newly-
@@ -654,7 +651,8 @@ pub fn render(
         // can disable proactively when models.selected_model is None
         // instead of letting the user click and discover the error
         // post-send.
-        let model_selected = models.selected_model.is_some();
+        let model_selected =
+            crate::modality::composer_has_target(chat.smart_auto, models.selected_model.as_deref());
         let send_clicked = render_input_area(
             ui, chat, image_textures, modality, model_selected,
             input_rows,
