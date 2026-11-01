@@ -111,6 +111,7 @@ pub(crate) fn test_harness<'a>(
     builder.build_ui(move |ui| {
         if !ready {
             apply(ui.ctx(), true);
+            egui_extras::install_image_loaders(ui.ctx());
             ready = true;
             return;
         }
@@ -241,7 +242,7 @@ pub const FONT_SEMIBOLD: &str = "plex-semibold";
 /// Load IBM Plex once per context. The default fonts stay behind it as the fallback for
 /// the symbols Plex does not draw.
 fn install_fonts_once(ctx: &egui::Context) {
-    let id = egui::Id::new("lokraft_fonts_installed");
+    let id = egui::Id::unique("lokraft_fonts_installed");
     if ctx.data(|d| d.get_temp::<bool>(id)).unwrap_or(false) {
         return;
     }

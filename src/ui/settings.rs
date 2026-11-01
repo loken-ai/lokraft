@@ -110,7 +110,7 @@ pub fn render(
 
         // ── Appearance ──
         settings_panel(ui, "APPEARANCE", |ui| {
-            form_row(ui, "THEME", |ui| {
+            form_row(ui, "THEME", |ui, _| {
                 let selected = if config.dark_theme { 0 } else { 1 };
                 if let Some(i) = widgets::segmented(ui, &["Dark", "Light"], selected) {
                     let dark = i == 0;
@@ -167,12 +167,17 @@ pub fn render(
             // The rfd path is gone with it; no more silent-None failures
             // when zenity isn't installed.
             settings_panel(ui, "MODEL DIRECTORIES", |ui| {
-                ui.label(text::label("OLLAMA MODELS"));
+                let label = ui.label(text::label("OLLAMA MODELS"));
                 ui.horizontal(|ui| {
-                    TextEdit::singleline(&mut editor.ollama_models_dir)
+                    ui.add(
+
+                        TextEdit::singleline(&mut editor.ollama_models_dir)
                         .desired_width(ui.available_width() - FIELD_BUTTON_RESERVE)
                         .hint_text("~/.ollama/models")
-                        .show(ui);
+
+                    )
+
+                    .labelled_by(label.id);
                     if ui
                         .add(egui::Button::new(text::note("Browse")))
                         .on_hover_text("Open the folder picker")
@@ -188,12 +193,17 @@ pub fn render(
                 widgets::caption_row(ui, "Folder where Ollama keeps its downloaded models. Leave empty to use the standard location.");
                 ui.add_space(widgets::GAP_LABEL);
 
-                ui.label(text::label("HUGGINGFACE MODELS"));
+                let label = ui.label(text::label("HUGGINGFACE MODELS"));
                 ui.horizontal(|ui| {
-                    TextEdit::singleline(&mut editor.huggingface_models_dir)
+                    ui.add(
+
+                        TextEdit::singleline(&mut editor.huggingface_models_dir)
                         .desired_width(ui.available_width() - FIELD_BUTTON_RESERVE)
                         .hint_text("~/.cache/huggingface/hub")
-                        .show(ui);
+
+                    )
+
+                    .labelled_by(label.id);
                     if ui
                         .add(egui::Button::new(text::note("Browse")))
                         .on_hover_text("Open the folder picker")
@@ -227,10 +237,15 @@ pub fn render(
 
             // Inference
             settings_panel(ui, "INFERENCE", |ui| {
-                ui.label(text::label("MODEL ID"));
-                TextEdit::singleline(&mut editor.model_id)
+                let label = ui.label(text::label("MODEL ID"));
+                ui.add(
+
+                    TextEdit::singleline(&mut editor.model_id)
                     .desired_width(ui.available_width())
-                    .show(ui);
+
+                )
+
+                .labelled_by(label.id);
                 widgets::caption_row(ui, "Name of the AI model to load when the server starts. Must match a model you have downloaded (e.g. devstral-small-2).");
                 ui.add_space(widgets::GAP_WIDGETS);
 
@@ -458,23 +473,26 @@ fn connections_panel(
         }));
         ui.add_space(widgets::GAP_LABEL);
         let form = &mut settings_state.connection_form;
-        form_row(ui, "NAME", |ui| {
-            ui.add(TextEdit::singleline(&mut form.name).desired_width(f32::INFINITY));
+        form_row(ui, "NAME", |ui, label| {
+            ui.add(TextEdit::singleline(&mut form.name).desired_width(f32::INFINITY))
+                .labelled_by(label);
         });
-        form_row(ui, "ADDRESS", |ui| {
+        form_row(ui, "ADDRESS", |ui, label| {
             ui.add(
                 TextEdit::singleline(&mut form.url)
                     .hint_text(crate::config::DEFAULT_LOKEN_URL)
                     .desired_width(f32::INFINITY),
-            );
+            )
+            .labelled_by(label);
         });
-        form_row(ui, "API KEY", |ui| {
+        form_row(ui, "API KEY", |ui, label| {
             ui.add(
                 TextEdit::singleline(&mut form.api_key)
                     .password(true)
                     .hint_text("only if the server requires one")
                     .desired_width(f32::INFINITY),
-            );
+            )
+            .labelled_by(label);
         });
         if let Some(why) = form.error {
             ui.add_space(widgets::GAP_LABEL);
@@ -515,11 +533,11 @@ fn settings_panel(ui: &mut egui::Ui, caps: &str, add_body: impl FnOnce(&mut egui
 
 /// A form row: the label in capitals in a column of fixed width, right
 /// aligned, and the content beside it.
-fn form_row(ui: &mut egui::Ui, caps: &str, add_content: impl FnOnce(&mut egui::Ui)) {
+fn form_row(ui: &mut egui::Ui, caps: &str, add_content: impl FnOnce(&mut egui::Ui, egui::Id)) {
     ui.add_space(widgets::GAP_LABEL);
-    ui.label(text::field_label(&sentence_case(caps)));
+    let label = ui.label(text::field_label(&sentence_case(caps)));
     ui.add_space(widgets::GAP_LABEL);
-    add_content(ui);
+    add_content(ui, label.id);
     ui.add_space(widgets::GAP_WIDGETS);
 }
 
@@ -550,15 +568,15 @@ fn config_row_pair(
     (caps_b, val_b): (&str, &mut String),
 ) {
     ui.columns(2, |cols| {
-        cols[0].label(text::label(caps_a));
-        TextEdit::singleline(val_a)
-            .desired_width(f32::INFINITY)
-            .show(&mut cols[0]);
+        let label = cols[0].label(text::label(caps_a));
+        cols[0]
+            .add(TextEdit::singleline(val_a).desired_width(f32::INFINITY))
+            .labelled_by(label.id);
 
-        cols[1].label(text::label(caps_b));
-        TextEdit::singleline(val_b)
-            .desired_width(f32::INFINITY)
-            .show(&mut cols[1]);
+        let label = cols[1].label(text::label(caps_b));
+        cols[1]
+            .add(TextEdit::singleline(val_b).desired_width(f32::INFINITY))
+            .labelled_by(label.id);
     });
 }
 
@@ -613,13 +631,14 @@ fn render_inapp_folder_picker(ctx: &egui::Context, editor: &mut ConfigEditorStat
             // path isn't a directory (visible feedback that the path
             // is wrong instead of silent "Enter does nothing").
             ui.horizontal(|ui| {
-                ui.label(text::label("PATH"));
+                let label = ui.label(text::label("PATH"));
                 let mut path_str = current.display().to_string();
                 let resp = ui.add(
                     egui::TextEdit::singleline(&mut path_str)
                         .desired_width(ui.available_width() - PICKER_GO_RESERVE)
                         .font(egui::TextStyle::Monospace),
                 );
+                let resp = resp.labelled_by(label.id);
                 let typed_path = std::path::PathBuf::from(path_str.trim());
                 let typed_valid = typed_path.is_dir();
                 let go_btn_resp = ui.add_enabled(typed_valid, egui::Button::new(text::note("Go")));

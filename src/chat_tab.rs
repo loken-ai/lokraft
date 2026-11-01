@@ -277,48 +277,26 @@ pub fn render(
     // freezing the UI for seconds and potentially exhausting RAM.
     // Reject oversized files with the same inline system message the
     // file-picker uses so the UX is symmetric across both entry points.
-    let (hovered_count, dropped_files): (usize, Vec<egui::DroppedFile>) = ui
+    let (hovered_count, dropped_files): (usize, Vec<egui::DroppedFileHandle>) = ui
         .ctx()
         .input(|i| (i.raw.hovered_files.len(), i.raw.dropped_files.clone()));
     if !dropped_files.is_empty() {
         use base64::Engine;
         let cap = format_attachment_cap_mb();
         for file in dropped_files {
-            // Probe size first so we can reject without reading. On
-            // native (path set) we use metadata — cheap, no I/O of
-            // the actual bytes. On web (bytes set, no path) we
-            // already have the bytes in memory but still gate the
-            // base64 + push so the server doesn't reject with 413
-            // after the round-trip.
-            let display_name = file
-                .path
-                .as_ref()
-                .and_then(|p| p.file_name())
+            let path = file.path().to_path_buf();
+            let display_name = path
+                .file_name()
                 .and_then(|n| n.to_str())
                 .map(str::to_string)
-                .unwrap_or_else(|| file.name.clone());
-            let display_path = file
-                .path
-                .as_ref()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|| file.name.clone());
+                .unwrap_or_else(|| path.to_string_lossy().to_string());
+            let display_path = path.to_string_lossy().to_string();
 
-            let size_result: Result<u64, std::io::Error> = if let Some(ref path) = file.path {
-                std::fs::metadata(path).map(|m| m.len())
-            } else {
-                Ok(file.bytes.as_ref().map(|b| b.len() as u64).unwrap_or(0))
-            };
-            let size = match size_result {
-                Ok(s) => s,
+            // The size is probed before the read, so an oversized file is rejected
+            // without loading it.
+            let size = match std::fs::metadata(&path) {
+                Ok(m) => m.len(),
                 Err(e) => {
-                    // metadata() failed — most commonly permission
-                    // denied or a broken symlink. The previous
-                    // `unwrap_or(0)` let this case silently fall
-                    // through the cap check, then std::fs::read
-                    // failed too and the drop produced NO attachment
-                    // and NO error. Surface it inline so the user
-                    // knows the drop was registered but the file
-                    // isn't readable.
                     chat.messages.push_back(ChatMessage::system(format!(
                         "Failed to read {display_name}: {e}. \
                          Check file permissions and re-attach."
@@ -335,21 +313,7 @@ pub fn render(
                 continue;
             }
 
-            // size-gate passed — actually read the bytes. Different
-            // failure modes from metadata (e.g. file deleted between
-            // metadata and read, or the disk hiccupped) get the same
-            // inline error message instead of silently dropping the
-            // attachment.
-            let bytes_result: Result<Vec<u8>, std::io::Error> = if let Some(ref path) = file.path {
-                std::fs::read(path)
-            } else {
-                Ok(file
-                    .bytes
-                    .as_deref()
-                    .map(<[u8]>::to_vec)
-                    .unwrap_or_default())
-            };
-            match bytes_result {
+            match file.bytes() {
                 Ok(bytes) => {
                     let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
                     chat.add_attachment(b64, display_path);
@@ -375,7 +339,7 @@ pub fn render(
         let screen = ui.ctx().content_rect();
         let painter = ui.ctx().layer_painter(egui::LayerId::new(
             egui::Order::Foreground,
-            egui::Id::new("chat_drop_overlay"),
+            egui::Id::unique("chat_drop_overlay"),
         ));
         painter.rect_filled(screen, 0.0, theme::tinted(theme::accent(), DROP_OVERLAY_A));
         let label = if hovered_count == 1 {
@@ -669,7 +633,7 @@ pub fn render(
         // Stash whether the button was clicked so we can propagate it out
         // of the closure boundary below.
         ui.ctx().memory_mut(|m| {
-            m.data.insert_temp(egui::Id::new("chat_send_clicked"), send_clicked);
+            m.data.insert_temp(egui::Id::unique("chat_send_clicked"), send_clicked);
         });
     });
 
@@ -678,7 +642,10 @@ pub fn render(
     // ui.with_layout boundary directly.
     let send_clicked = ui
         .ctx()
-        .memory(|m| m.data.get_temp::<bool>(egui::Id::new("chat_send_clicked")))
+        .memory(|m| {
+            m.data
+                .get_temp::<bool>(egui::Id::unique("chat_send_clicked"))
+        })
         .unwrap_or(false);
     ChatRenderOutput {
         send_clicked,
@@ -947,7 +914,7 @@ fn render_chat_header(
                     // The textures keyed by msg_*, gen_* and attach_* go with the
                     // messages, and so does the markdown viewer's scroll state.
                     image_textures.clear();
-                    md_cache.clear_scrollable();
+                    md_cache.clear_viewers();
                 }
             }
         }
@@ -1030,6 +997,7 @@ fn render_input_area(
                 let mut steps: u32 = chat.image_num_steps.unwrap_or(IMAGE_NUM_STEPS_PLACEHOLDER);
                 let changed = slider_with_readout(
                     ui,
+                    "Steps",
                     &mut steps,
                     IMAGE_NUM_STEPS_MIN..=IMAGE_NUM_STEPS_MAX,
                     0,
@@ -1059,6 +1027,7 @@ fn render_input_area(
                     .add_enabled_ui(has_input_image, |ui| {
                         slider_with_readout(
                             ui,
+                            "Strength",
                             &mut strength,
                             IMAGE_STRENGTH_MIN..=IMAGE_STRENGTH_MAX,
                             2,
@@ -1126,6 +1095,7 @@ fn render_input_area(
                 let mut speed: f32 = chat.tts_speed.unwrap_or(TTS_SPEED_DEFAULT);
                 let changed = slider_with_readout(
                     ui,
+                    "Speed",
                     &mut speed,
                     TTS_SPEED_MIN..=TTS_SPEED_MAX,
                     2,
@@ -1500,6 +1470,7 @@ fn render_input_area(
 /// cell. Returns whether either changed the value.
 fn slider_with_readout<T: egui::emath::Numeric>(
     ui: &mut egui::Ui,
+    name: &str,
     value: &mut T,
     range: std::ops::RangeInclusive<T>,
     decimals: usize,
@@ -1522,6 +1493,7 @@ fn slider_with_readout<T: egui::emath::Numeric>(
                     .range(range)
                     .fixed_decimals(decimals),
                 widgets::READOUT_W,
+                name,
             )
         })
         .inner;
@@ -2006,7 +1978,7 @@ fn render_streaming_message(
 /// answer has begun, so the answer is what the eye lands on.
 fn thinking_block(ui: &mut egui::Ui, thought: &str, open: bool) {
     egui::CollapsingHeader::new(text::label("THINKING"))
-        .id_salt(ui.id().with("thinking"))
+        .id_salt(ui.scope_id().with("thinking"))
         .default_open(false)
         .open(if open { Some(true) } else { None })
         .show(ui, |ui| {

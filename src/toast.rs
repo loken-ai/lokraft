@@ -86,7 +86,7 @@ pub fn render(ctx: &egui::Context, toasts: &mut Vec<Toast>) {
 
     let mut dismiss: Option<usize> = None;
 
-    egui::Area::new(egui::Id::new("toast_stack"))
+    egui::Area::new(egui::Id::unique("toast_stack"))
         .anchor(
             egui::Align2::RIGHT_BOTTOM,
             egui::vec2(-TOAST_MARGIN, -TOAST_MARGIN),

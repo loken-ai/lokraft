@@ -244,7 +244,7 @@ fn render_prompt(
             _ => "PROMPT",
         };
         form_section(ui, prompt_title, |ui| {
-            ui.label(text::field_label(&sentence_case(prompt_title)));
+            let title = ui.label(text::field_label(&sentence_case(prompt_title)));
             ui.add_space(widgets::GAP_LABEL);
             let hint = media.kind.prompt_hint();
             widgets::well(ui, |ui| {
@@ -254,7 +254,8 @@ fn render_prompt(
                         .desired_rows(PROMPT_ROWS)
                         .desired_width(f32::INFINITY)
                         .hint_text(hint),
-                );
+                )
+                .labelled_by(title.id);
             });
             // The enhancer rewrites the prompt with a local model tuned to this
             // kind; Undo restores the text it replaced.
@@ -719,7 +720,7 @@ fn render_params(
                             ui.horizontal(|ui| {
                             ui.checkbox(&mut media.music.loop_mode, "seamless loop");
                             if media.music.loop_mode {
-                                widgets::drag_fixed(ui, egui::DragValue::new(&mut media.music.loop_bars).range(1..=64).suffix(" bars"), widgets::READOUT_WIDE_W);
+                                widgets::drag_fixed(ui, egui::DragValue::new(&mut media.music.loop_bars).range(1..=64).suffix(" bars"), widgets::READOUT_WIDE_W, "Loop bars");
                             }
                         })
                         .response
@@ -899,8 +900,8 @@ fn render_params(
                         ui.horizontal(|ui| {
                             ui.checkbox(&mut media.sfx.loop_mode, "seamless");
                             if media.sfx.loop_mode {
-                                widgets::drag_fixed(ui, egui::DragValue::new(&mut media.sfx.loop_bars).range(1..=32).suffix(" bars"), widgets::READOUT_WIDE_W);
-                                widgets::drag_fixed(ui, egui::DragValue::new(&mut media.sfx.loop_bpm).range(40..=300).suffix(" bpm"), widgets::READOUT_WIDE_W);
+                                widgets::drag_fixed(ui, egui::DragValue::new(&mut media.sfx.loop_bars).range(1..=32).suffix(" bars"), widgets::READOUT_WIDE_W, "Loop bars");
+                                widgets::drag_fixed(ui, egui::DragValue::new(&mut media.sfx.loop_bpm).range(40..=300).suffix(" bpm"), widgets::READOUT_WIDE_W, "Loop tempo");
                             }
                         })
                         .response
@@ -1516,6 +1517,7 @@ fn slider_row<T: egui::emath::Numeric>(
                         .fixed_decimals(opts.decimals)
                         .suffix(opts.suffix),
                     widgets::READOUT_WIDE_W,
+                    caps,
                 )
             })
             .inner
@@ -1903,12 +1905,14 @@ fn size_row(
                     .range(range.clone())
                     .speed(SIZE_STEP),
                 widgets::READOUT_W,
+                "Width",
             );
             ui.label(text::label("x"));
             widgets::drag_fixed(
                 ui,
                 egui::DragValue::new(height).range(range).speed(SIZE_STEP),
                 widgets::READOUT_W,
+                "Height",
             );
         });
     })
@@ -1979,6 +1983,7 @@ fn region_rows(ui: &mut egui::Ui, regions: &mut Vec<crate::state::ImageRegion>) 
                         .range(0.0..=8.0)
                         .fixed_decimals(2),
                     widgets::READOUT_W,
+                    "Region strength",
                 )
                 .on_hover_text("How hard this region's prompt outweighs the base one there.");
                 if widgets::close_button(ui, REGION_CLOSE_PX)
@@ -2081,6 +2086,7 @@ fn lora_rows_inner(
                         ui,
                         egui::DragValue::new(&mut entry.1).speed(0.05).range(-1.0..=2.0).fixed_decimals(2),
                         widgets::READOUT_W,
+                        "LoRA strength",
                     )
                     .on_hover_text("1.0 is as trained; 0 disables one without removing it; past 1 over-drives it.");
                 });
@@ -2232,7 +2238,7 @@ fn overlay_button(
     label: &str,
     enabled: bool,
 ) -> egui::Response {
-    let id = ui.id().with(("media_overlay", role, index));
+    let id = ui.scope_id().with(("media_overlay", role, index));
     let resp = ui.interact(rect, id, egui::Sense::click());
     let hovered = enabled && resp.hovered();
     let fill = if hovered {
@@ -3438,7 +3444,7 @@ fn render_video_viewer(
         }
     });
 
-    egui::Area::new(egui::Id::new("media_video_viewer"))
+    egui::Area::new(egui::Id::unique("media_video_viewer"))
         .order(egui::Order::Foreground)
         .fixed_pos(screen.min)
         .show(ctx, |ui| {
@@ -3449,7 +3455,7 @@ fn render_video_viewer(
 
             let resp = ui.interact(
                 screen,
-                egui::Id::new("media_video_viewer_canvas"),
+                egui::Id::unique("media_video_viewer_canvas"),
                 egui::Sense::click_and_drag(),
             );
 

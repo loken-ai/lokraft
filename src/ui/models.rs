@@ -10,7 +10,7 @@ use crate::settings::SettingsAction;
 use crate::state::{ActionStatus, ModelSortDirection, ModelSortField, ModelState};
 use crate::theme::{self, text, HAIRLINE};
 use crate::ui::{surface, widgets};
-use eframe::egui;
+use eframe::egui::{self, Role, WidgetInfo};
 
 /// Popular models for suggestions
 const POPULAR_MODELS: &[(&str, &str)] = &[
@@ -140,7 +140,7 @@ pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction>
             .find(|(k, _)| *k == models.list_modality_filter)
             .map(|(_, l)| *l)
             .unwrap_or("All kinds");
-        egui::ComboBox::from_id_salt("models_kind")
+        let combo = egui::ComboBox::from_id_salt("models_kind")
             .selected_text(kind_label)
             .width(TOOLBAR_SELECT_W)
             .show_ui(ui, |ui| {
@@ -148,6 +148,9 @@ pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction>
                     ui.selectable_value(&mut models.list_modality_filter, *kind, *label);
                 }
             });
+        combo
+            .response
+            .widget_info(|| WidgetInfo::labeled(Role::ComboBox, true, "Kind"));
 
         let fields = [
             (ModelSortField::Name, "Sort by name"),
@@ -159,7 +162,7 @@ pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction>
             .find(|(f, _)| *f == models.sort_field)
             .map(|(_, l)| *l)
             .unwrap_or("Sort by name");
-        egui::ComboBox::from_id_salt("models_sort")
+        let combo = egui::ComboBox::from_id_salt("models_sort")
             .selected_text(sort_label)
             .width(TOOLBAR_SELECT_W)
             .show_ui(ui, |ui| {
@@ -167,6 +170,9 @@ pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction>
                     ui.selectable_value(&mut models.sort_field, field, label);
                 }
             });
+        combo
+            .response
+            .widget_info(|| WidgetInfo::labeled(Role::ComboBox, true, "Sort field"));
         let direction = match models.sort_direction {
             ModelSortDirection::Asc => "Ascending",
             ModelSortDirection::Desc => "Descending",
@@ -556,7 +562,9 @@ mod tests {
         harness.get_by_label("Load").click();
         harness.run();
         // A click on the name, which no button owns, selects the row.
-        harness.get_by_label("llama3.2:1b").click();
+        harness
+            .get_by_role_and_label(egui::Role::Label, "llama3.2:1b")
+            .click();
         harness.run();
         drop(harness);
         let loads = actions

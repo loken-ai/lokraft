@@ -98,6 +98,7 @@ fn shoot_acting(
             app.config.session_url = Some(NO_SERVER.to_string());
             app.config.dark_theme = dark;
             crate::theme::apply(&cc.egui_ctx, dark);
+            egui_extras::install_image_loaders(&cc.egui_ctx);
             app.current_section = section;
             app.sidebar_expanded = true;
             app.connection_status = crate::state::ConnectionStatus::connected("2 models loaded");
@@ -442,6 +443,7 @@ fn which_literal_glyphs_resolve() {
         let g = glyph.to_string();
         let mut harness = Harness::builder()
             .with_size(egui::vec2(64.0, 64.0))
+            .allow_missing_glyphs()
             .build_ui(move |ui| {
                 ui.label(egui::RichText::new(&g).size(40.0));
             });

@@ -94,7 +94,7 @@ pub fn request_open_set(ctx: &egui::Context, texes: &[egui::TextureHandle], idx:
     }
     ctx.data_mut(|d| {
         d.insert_temp(
-            Id::new(REQUEST_ID),
+            Id::unique(REQUEST_ID),
             OpenRequest(Some((texes.to_vec(), idx))),
         )
     });
@@ -157,7 +157,7 @@ pub fn clickable_image_in_set(
 /// and handle input. Call once per frame at the top level, above all tabs.
 pub fn show(ctx: &egui::Context, state: &mut Option<FullscreenImage>) {
     if let Some(OpenRequest(Some((texes, idx)))) =
-        ctx.data_mut(|d| d.remove_temp::<OpenRequest>(Id::new(REQUEST_ID)))
+        ctx.data_mut(|d| d.remove_temp::<OpenRequest>(Id::unique(REQUEST_ID)))
     {
         *state = Some(FullscreenImage::new(texes, idx));
     }
@@ -168,7 +168,7 @@ pub fn show(ctx: &egui::Context, state: &mut Option<FullscreenImage>) {
     let mut step: isize = 0;
 
     // ── Backdrop + image + zoom/pan input ────────────────────────────────
-    egui::Area::new(Id::new("fullscreen_image_overlay"))
+    egui::Area::new(Id::unique("fullscreen_image_overlay"))
         .order(Order::Foreground)
         .fixed_pos(screen.min)
         .show(ctx, |ui| {
@@ -213,7 +213,7 @@ pub fn show(ctx: &egui::Context, state: &mut Option<FullscreenImage>) {
         });
 
     // ── Control bar (bottom center) ──────────────────────────────────────
-    egui::Area::new(Id::new("fullscreen_image_controls"))
+    egui::Area::new(Id::unique("fullscreen_image_controls"))
         .order(Order::Foreground)
         .anchor(Align2::CENTER_BOTTOM, [0.0, -BAR_OFFSET_Y])
         .show(ctx, |ui| {

@@ -20,6 +20,7 @@ All notable changes to lokraft. The format follows [Keep a Changelog](https://ke
 - models: show the models as a table.
 - studio: put the form on the left with Generate in view, and the result on the right.
 - chat: write the conversation on a reading column, with the actions under the text.
+- build: update egui to 0.37 and require Rust 1.95 or later.
 
 ### Fixed
 

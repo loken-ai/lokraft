@@ -5,7 +5,7 @@
 
 use eframe::egui::{
     self, text::LayoutJob, Align, Color32, CornerRadius, FontId, Label, Layout, Margin, Rect,
-    Response, RichText, Sense, Shape, Stroke, TextFormat, Ui, Vec2, WidgetInfo, WidgetType,
+    Response, RichText, Role, Sense, Shape, Stroke, TextFormat, Ui, Vec2, WidgetInfo,
 };
 
 use crate::icons::Icon;
@@ -493,9 +493,11 @@ pub fn readout(ui: &mut Ui, width: f32, s: &str) -> Response {
     fixed_label(ui, width, text::mono(s))
 }
 
-/// A drag value boxed to `width`.
-pub fn drag_fixed(ui: &mut Ui, dv: egui::DragValue<'_>, width: f32) -> Response {
-    ui.add_sized(Vec2::new(width, ui.spacing().interact_size.y), dv)
+/// A drag value boxed to `width`, announced to assistive tools as `name`.
+pub fn drag_fixed(ui: &mut Ui, dv: egui::DragValue<'_>, width: f32, name: &str) -> Response {
+    let response = ui.add_sized(Vec2::new(width, ui.spacing().interact_size.y), dv);
+    response.widget_info(|| WidgetInfo::labeled(Role::SpinButton, true, name));
+    response
 }
 
 /// A lamp in its cell.
@@ -558,7 +560,7 @@ pub fn icon_button_lit(ui: &mut Ui, icon: Icon, tip: &str, lit: bool) -> Respons
     };
     icon.image(ICON_PT, ink)
         .paint_at(ui, rect.shrink((ICON_BUTTON_PX - ICON_PT) / 2.0));
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tip));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, tip));
     response.on_hover_text(tip)
 }
 
@@ -579,7 +581,7 @@ pub fn close_button(ui: &mut Ui, size: f32) -> Response {
     let r = rect.shrink(CLOSE_PAD);
     painter.line_segment([r.left_top(), r.right_bottom()], stroke);
     painter.line_segment([r.right_top(), r.left_bottom()], stroke);
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, "Close"));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, "Close"));
     response
 }
 
@@ -662,7 +664,7 @@ mod tests {
                 tab_bar(ui, 1, &["ONE", "TWO", "THREE"]);
                 fixed_label(ui, READOUT_W, text::label("FIXED"));
                 let mut v = 0.5f32;
-                drag_fixed(ui, egui::DragValue::new(&mut v), READOUT_W);
+                drag_fixed(ui, egui::DragValue::new(&mut v), READOUT_W, "Value");
                 lamp_inline(ui, true, theme::accent());
                 lamp_inline(ui, false, theme::accent());
                 led(ui, true, theme::success(), 12.0);

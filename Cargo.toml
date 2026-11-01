@@ -15,10 +15,10 @@ path = "src/main.rs"
 [dependencies]
 # `inspection` exposes the AccessKit tree so the headless test harness can drive
 # the app without a display server.
-eframe = { version = "0.35", default-features = false, features = ["glow", "default_fonts", "inspection"] }
-egui = "0.35"
-egui_extras = { version = "0.35", features = ["image", "svg"] }
-egui_commonmark = "0.24"
+eframe = { version = "0.37", default-features = false, features = ["glow", "default_fonts", "inspection"] }
+egui = "0.37"
+egui_extras = { version = "0.37", features = ["image", "svg"] }
+egui_commonmark = "0.26"
 
 # In-process audio output: the portable device layer (ALSA / WASAPI / CoreAudio).
 # Decoding and mixing are ours.
@@ -49,12 +49,12 @@ anyhow = "1.0"
 # winit's "platform not supported". They are meaningless elsewhere, and enabling
 # them there pulls x11-dl into the build, so they live here.
 [target.'cfg(target_os = "linux")'.dependencies]
-eframe = { version = "0.35", default-features = false, features = ["glow", "default_fonts", "wayland", "x11", "inspection"] }
+eframe = { version = "0.37", default-features = false, features = ["glow", "default_fonts", "wayland", "x11", "inspection"] }
 
 [dev-dependencies]
 # Headless egui harness reading the AccessKit tree: drives the Media Studio panels
 # so a broken kind or arm is caught without a display server.
-egui_kittest = { version = "0.35.0", features = ["wgpu", "snapshot", "eframe"] }
+egui_kittest = { version = "0.37", features = ["wgpu", "snapshot", "eframe"] }
 
 [features]
 # In-process audio output, on by default: it is what makes playback behave the same

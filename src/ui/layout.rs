@@ -16,8 +16,7 @@ use crate::state::Section;
 use crate::theme::{self, text, HAIRLINE};
 use crate::ui::{surface, widgets};
 use eframe::egui::{
-    self, Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, Vec2, WidgetInfo,
-    WidgetType,
+    self, Align2, Color32, FontId, Pos2, Rect, Response, Role, Sense, Stroke, Vec2, WidgetInfo,
 };
 
 /// Sidebar width (icon + label when expanded)
@@ -414,7 +413,7 @@ fn sidebar_toggle(ui: &mut egui::Ui, expanded: bool) -> Response {
     };
     let glyph = Rect::from_center_size(rect.center(), Vec2::splat(CHEVRON_W));
     surface::chevron(ui, glyph, dir, Stroke::new(CHEVRON_STROKE_W, ink));
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tip));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, tip));
     response.on_hover_text(tip)
 }
 
@@ -481,7 +480,7 @@ fn nav_pill(
         );
     }
 
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, label));
     response.on_hover_ui(|ui| {
         ui.label(text::value(label));
         ui.label(text::note(tip));
