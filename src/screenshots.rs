@@ -70,6 +70,19 @@ fn shoot_skin(
     section: Section,
     dress: impl FnOnce(&mut LLMGuiApp) + 'static,
 ) {
+    shoot_acting(out, name, dark, section, dress, |_| {});
+}
+
+/// `shoot_skin`, then `act` on the window before it is photographed, to open a panel or a
+/// menu the way a person would.
+fn shoot_acting(
+    out: &str,
+    name: &str,
+    dark: bool,
+    section: Section,
+    dress: impl FnOnce(&mut LLMGuiApp) + 'static,
+    act: impl FnOnce(&mut Harness<'_, LLMGuiApp>),
+) {
     let mut harness = Harness::builder()
         .with_size(egui::vec2(WINDOW.0, WINDOW.1))
         .build_eframe(move |cc| {
@@ -110,6 +123,8 @@ fn shoot_skin(
     // is a fact about this machine, not about the view, so it is dropped before the frame.
     harness.state_mut().toasts.clear();
     harness.run_steps(1);
+    act(&mut harness);
+    harness.run_steps(3);
     std::fs::create_dir_all(out).unwrap_or_else(|e| panic!("create {out}: {e}"));
     harness
         .render()
@@ -161,6 +176,83 @@ fn light_skin() {
     );
 }
 
+/// Where the review renders go: the screens and states the documentation does not show.
+const REVIEW_OUT: &str = "target/review";
+
+/// A short exchange, so a state that needs a conversation has one.
+fn short_exchange(app: &mut LLMGuiApp) {
+    for (role, content, time) in [
+        ("user", "Explain what a KV cache holds, briefly.", "14:02"),
+        (
+            "assistant",
+            "It holds the keys and values already computed for every token.",
+            "14:02",
+        ),
+    ] {
+        app.chat.messages.push_back(ChatMessage {
+            role: role.into(),
+            content: content.into(),
+            timestamp: time.into(),
+            ..Default::default()
+        });
+    }
+}
+
+/// The settings, the terminal, and the panels and menus that open from a click.
+fn review() {
+    use egui_kittest::kittest::Queryable;
+    for dark in [true, false] {
+        let skin = if dark { "dark" } else { "light" };
+        shoot_skin(
+            REVIEW_OUT,
+            &format!("settings-{skin}"),
+            dark,
+            Section::Settings,
+            |_| {},
+        );
+        shoot_skin(
+            REVIEW_OUT,
+            &format!("terminal-{skin}"),
+            dark,
+            Section::Terminal,
+            |_| {},
+        );
+        shoot_acting(
+            REVIEW_OUT,
+            &format!("parameters-{skin}"),
+            dark,
+            Section::Chat,
+            short_exchange,
+            |h| {
+                h.get_by_label("Parameters").click();
+                h.run_steps(3);
+            },
+        );
+        shoot_acting(
+            REVIEW_OUT,
+            &format!("connections-{skin}"),
+            dark,
+            Section::Chat,
+            short_exchange,
+            |h| {
+                h.get_by_label("Local").click();
+                h.run_steps(3);
+            },
+        );
+        shoot_acting(
+            REVIEW_OUT,
+            &format!("confirm-{skin}"),
+            dark,
+            Section::Chat,
+            short_exchange,
+            |h| {
+                h.get_by_label("Clear").click();
+                h.run_steps(3);
+            },
+        );
+    }
+}
+
 /// Every documented view, then the light renders. One test rather than one per view: the
 /// skin is one process-wide value, and two shots on parallel threads would photograph each
 /// other's skin.
@@ -173,6 +265,7 @@ fn documentation() {
     models();
     logs();
     light_skin();
+    review();
 }
 
 /// A conversation mid-answer. An empty chat shows the placeholder and none of what the tab is
