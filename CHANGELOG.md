@@ -4,6 +4,8 @@ All notable changes to lokraft. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+### Added
+
 ### Fixed
 
 - chat: send the whole conversation to a text model.

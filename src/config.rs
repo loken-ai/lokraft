@@ -148,6 +148,44 @@ impl ApiProfile {
     }
 }
 
+/// The values of a profile that differ from the defaults its type shipped with. Those
+/// are the ones a person chose, so they become the parameters that are sent.
+fn generation_changed_from_defaults(profile: &ApiProfile) -> crate::generation::GenParams {
+    use crate::generation::GenParams;
+    let mut g = GenParams::default();
+    match profile.api_type {
+        ApiType::Ollama => {
+            let p = &profile.ollama_params;
+            let d = OllamaParams::default();
+            g.temperature = (p.temperature != d.temperature).then_some(p.temperature);
+            g.top_p = (p.top_p != d.top_p).then_some(p.top_p);
+            g.top_k = (p.top_k != d.top_k).then_some(p.top_k);
+            g.repeat_penalty = (p.repeat_penalty != d.repeat_penalty).then_some(p.repeat_penalty);
+            g.num_ctx = (p.num_ctx != d.num_ctx).then_some(p.num_ctx);
+            g.max_tokens = (p.num_predict != d.num_predict).then_some(p.num_predict);
+            g.seed = u64::try_from(p.seed).ok();
+            g.set_stop_line(&p.stop);
+        }
+        ApiType::Loken => {
+            let p = &profile.loken_params;
+            let d = LokenParams::default();
+            g.temperature = (p.temperature != d.temperature).then_some(p.temperature);
+            g.num_ctx = (p.context_length != d.context_length).then_some(p.context_length);
+        }
+        ApiType::OpenApi => {
+            let p = &profile.openapi_params;
+            let d = OpenApiParams::default();
+            g.temperature = (p.temperature != d.temperature).then_some(p.temperature);
+            g.top_p = (p.top_p != d.top_p).then_some(p.top_p);
+            g.max_tokens = (p.max_tokens != d.max_tokens)
+                .then_some(p.max_tokens)
+                .flatten()
+                .and_then(|n| i32::try_from(n).ok());
+        }
+    }
+    g
+}
+
 /// Application configuration
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 /// Persisted: it must survive a file written by an OLDER build. The container-level
@@ -171,6 +209,16 @@ pub struct AppConfig {
     pub window_maximized: Option<bool>,
     pub profiles: Vec<ApiProfile>,
     pub selected_profile: Option<String>,
+    /// The servers lokraft can talk to. Empty in a file written before connections
+    /// existed, which `adopt_legacy` then fills.
+    #[serde(default)]
+    pub connections: Vec<crate::connection::Connection>,
+    /// The name of the connection in use.
+    #[serde(default)]
+    pub active_connection: Option<String>,
+    /// The generation parameters the person changed. Empty means the server decides.
+    #[serde(default)]
+    pub generation: crate::generation::GenParams,
     /// Media Studio parameters, saved at exit so a restart keeps every tuned
     /// setting (kind, prompt, per-kind params). None on first launch.
     #[serde(default)]
@@ -227,11 +275,51 @@ impl Default for AppConfig {
                 ),
             ],
             selected_profile: Some("Default".into()),
+            connections: vec![crate::connection::Connection::new(
+                "Local",
+                DEFAULT_LOKEN_URL,
+                None,
+            )],
+            active_connection: Some("Local".into()),
+            generation: crate::generation::GenParams::default(),
         }
     }
 }
 
 impl AppConfig {
+    /// The connection in use, when the list names one that exists.
+    pub fn active(&self) -> Option<&crate::connection::Connection> {
+        let name = self.active_connection.as_deref()?;
+        self.connections.iter().find(|c| c.name == name)
+    }
+
+    /// Fill the connections and the generation parameters from the fields an older build
+    /// wrote: the server address, the key and the active profile. Does nothing when the
+    /// file already holds connections.
+    pub(crate) fn adopt_legacy(&mut self) {
+        if !self.connections.is_empty() {
+            return;
+        }
+        let url = if self.server_url.trim().is_empty() {
+            DEFAULT_LOKEN_URL
+        } else {
+            self.server_url.as_str()
+        };
+        self.connections = vec![crate::connection::Connection::new(
+            "Default",
+            url,
+            self.api_key.as_deref(),
+        )];
+        self.active_connection = Some("Default".into());
+        let profile = self
+            .selected_profile
+            .as_deref()
+            .and_then(|name| self.profiles.iter().find(|p| p.name == name));
+        if let Some(profile) = profile {
+            self.generation = generation_changed_from_defaults(profile);
+        }
+    }
+
     /// Load configuration from disk.
     ///
     /// The original implementation was a `.and_then(...).unwrap_or_default()`
@@ -291,7 +379,10 @@ impl AppConfig {
             return AppConfig::default(); // file absent — normal first run
         };
         match serde_json::from_str::<AppConfig>(&s) {
-            Ok(cfg) => cfg,
+            Ok(mut cfg) => {
+                cfg.adopt_legacy();
+                cfg
+            }
             Err(parse_err) => {
                 if !s.is_empty() {
                     let ts = std::time::SystemTime::now()
@@ -630,6 +721,57 @@ mod tests {
         assert_eq!(back.selected_profile, original.selected_profile);
         assert_eq!(back.server_url, original.server_url);
         assert_eq!(back.dark_theme, original.dark_theme);
+    }
+
+    #[test]
+    fn an_old_config_becomes_one_connection_and_the_values_that_were_changed() {
+        let old = r#"{
+            "server_url": "http://10.0.0.5:11435/",
+            "api_key": "  secret ",
+            "profiles": [{
+                "name": "Mine", "api_type": "Ollama", "server_url": "x", "model": "m",
+                "ollama_params": { "temperature": 0.4, "top_p": 0.9, "top_k": 40,
+                    "repeat_penalty": 1.1, "num_ctx": 8192, "num_predict": -1,
+                    "seed": -1, "stop": "@@, END" }
+            }],
+            "selected_profile": "Mine"
+        }"#;
+        let mut cfg: AppConfig = serde_json::from_str(old).expect("old config parses");
+        assert!(
+            cfg.connections.is_empty(),
+            "an old file carries no connections"
+        );
+        cfg.adopt_legacy();
+
+        let active = cfg.active().expect("an active connection");
+        assert_eq!(active.url, "http://10.0.0.5:11435");
+        assert_eq!(active.api_key.as_deref(), Some("secret"));
+
+        let g = &cfg.generation;
+        assert_eq!(g.temperature, Some(0.4));
+        assert_eq!(g.num_ctx, Some(8192));
+        assert_eq!(g.top_p, None, "a value left at its old default is not sent");
+        assert_eq!(g.max_tokens, None);
+        assert_eq!(g.seed, None);
+        assert_eq!(g.stop, ["@@", "END"]);
+    }
+
+    #[test]
+    fn a_config_that_already_has_connections_is_left_alone() {
+        let mut cfg = AppConfig::default();
+        cfg.server_url = "http://elsewhere:1".into();
+        let before = cfg.clone();
+        cfg.adopt_legacy();
+        assert_eq!(cfg, before);
+    }
+
+    #[test]
+    fn a_profile_saved_with_the_removed_penalties_still_loads() {
+        let saved = r#"{ "temperature": 0.5, "max_tokens": 256, "top_p": 0.9,
+                         "frequency_penalty": 0.2, "presence_penalty": 0.1 }"#;
+        let parsed: OpenApiParams =
+            serde_json::from_str(saved).expect("a profile with removed fields must load");
+        assert_eq!(parsed.max_tokens, Some(256));
     }
 
     #[test]
