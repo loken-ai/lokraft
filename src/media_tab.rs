@@ -986,7 +986,7 @@ fn render_params(
                                     })
                                     .response
                                     .on_hover_text("Preset voice (OpenAI-style names). A Style overrides it when filled.");
-                                if widgets::icon_button(ui, Icon::Refresh, "Fetch the voice list from the server").clicked() {
+                                if widgets::icon_button(ui, Icon::Download, "Fetch the voice list from the server").clicked() {
                                     out.refresh_voices_clicked = true;
                                 }
                             });

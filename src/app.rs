@@ -3278,29 +3278,20 @@ impl eframe::App for LLMGuiApp {
         }
 
         // ── GLOBAL KEYBOARD NAV ──
-        // Ctrl/Cmd + 1..7 jump straight to a section, in the same order
-        // as the sidebar NAV_ITEMS. `modifiers.command` is Ctrl on
-        // Windows/Linux and Cmd on macOS. The command modifier keeps
-        // these from colliding with the chat input's bare Enter/Up/Down/
+        // Ctrl/Cmd + 1..6 jump straight to a section, in the order of the sidebar.
+        // `modifiers.command` is Ctrl on Windows/Linux and Cmd on macOS. The command
+        // modifier keeps these from colliding with the chat input's bare Enter/Up/Down/
         // Esc shortcuts, so no text-focus guard is needed.
         let section_hotkey = ctx.input(|i| {
             if !i.modifiers.command {
                 return None;
             }
             use egui::Key::*;
-            for (key, section) in [
-                (Num1, Section::Chat),
-                (Num2, Section::Terminal),
-                (Num3, Section::Models),
-                (Num4, Section::Settings),
-                (Num5, Section::MediaStudio),
-                (Num6, Section::ServerLog),
-            ] {
-                if i.key_pressed(key) {
-                    return Some(section);
-                }
-            }
-            None
+            [Num1, Num2, Num3, Num4, Num5, Num6, Num7, Num8, Num9]
+                .iter()
+                .enumerate()
+                .find(|(_, key)| i.key_pressed(**key))
+                .and_then(|(index, _)| crate::ui::layout::section_for_shortcut(index + 1))
         });
         if let Some(section) = section_hotkey {
             self.current_section = section;

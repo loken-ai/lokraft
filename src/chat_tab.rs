@@ -1041,7 +1041,7 @@ fn render_input_area(
                 if chat.image_num_steps.is_some()
                     && widgets::icon_button(
                         ui,
-                        Icon::Refresh,
+                        Icon::Undo,
                         "Revert to the server's per-model default step count",
                     )
                     .clicked()
@@ -1077,7 +1077,7 @@ fn render_input_area(
                 if chat.image_strength.is_some()
                     && widgets::icon_button(
                         ui,
-                        Icon::Refresh,
+                        Icon::Undo,
                         "Revert to the server's per-route default strength",
                     )
                     .clicked()
@@ -1138,7 +1138,7 @@ fn render_input_area(
                 if chat.tts_speed.is_some()
                     && widgets::icon_button(
                         ui,
-                        Icon::Refresh,
+                        Icon::Undo,
                         "Revert to the server's default speed (1.0)",
                     )
                     .clicked()

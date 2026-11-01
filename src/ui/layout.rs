@@ -67,6 +67,11 @@ enum NavIcon {
     Text(&'static str),
 }
 
+/// The section that Ctrl+`n` opens, `n` counting from 1 in the order of the sidebar.
+pub fn section_for_shortcut(n: usize) -> Option<Section> {
+    NAV_ITEMS.get(n.checked_sub(1)?).map(|item| item.section)
+}
+
 const NAV_ITEMS: &[NavItem] = &[
     NavItem {
         icon: NavIcon::Svg(Icon::Chat),
@@ -314,9 +319,10 @@ pub fn sidebar(ui: &mut egui::Ui, current: &mut Section, expanded: bool) -> bool
             }
             ui.add_space(NAV_GAP);
 
-            for item in NAV_ITEMS {
+            for (index, item) in NAV_ITEMS.iter().enumerate() {
                 let active = *current == item.section;
-                if nav_pill(ui, &item.icon, item.label, item.tip, active, expanded).clicked() {
+                let tip = format!("{}\nShortcut: Ctrl+{}", item.tip, index + 1);
+                if nav_pill(ui, &item.icon, item.label, &tip, active, expanded).clicked() {
                     *current = item.section;
                 }
                 ui.add_space(NAV_ITEM_GAP);
@@ -544,7 +550,16 @@ mod tests {
 
 #[cfg(test)]
 mod nav_tests {
-    use super::NAV_ITEMS;
+    use super::{section_for_shortcut, NAV_ITEMS};
+
+    #[test]
+    fn each_shortcut_opens_the_section_at_that_place_in_the_sidebar() {
+        for (i, item) in NAV_ITEMS.iter().enumerate() {
+            assert_eq!(section_for_shortcut(i + 1), Some(item.section));
+        }
+        assert_eq!(section_for_shortcut(0), None);
+        assert_eq!(section_for_shortcut(NAV_ITEMS.len() + 1), None);
+    }
 
     #[test]
     fn the_terminal_tip_names_every_command() {
