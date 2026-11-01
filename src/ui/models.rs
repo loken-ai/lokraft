@@ -129,6 +129,7 @@ pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction>
     }
     let total = models.available_models.len();
     let visible = visible_pairs.len();
+    let narrowed = !filter.is_empty() || models.list_modality_filter.is_some();
 
     // The chrome row: title, filter, kind, sort, and in the tail Refresh and the count.
     widgets::chrome_row(ui, |ui| {
@@ -208,12 +209,11 @@ pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction>
                 actions.push(SettingsAction::RefreshModels);
             }
             ui.add_space(widgets::GAP_WIDGETS);
-            let count_text = if filter.is_empty() || visible == total {
-                format!("{} model{}", total, if total == 1 { "" } else { "s" })
-            } else {
-                format!("{} of {}", visible, total)
-            };
-            widgets::readout(ui, widgets::READOUT_WIDE_W, &count_text);
+            widgets::readout(
+                ui,
+                widgets::READOUT_WIDE_W,
+                &count_text(visible, total, narrowed),
+            );
         });
     });
     ui.add_space(widgets::GAP_WIDGETS);
@@ -289,10 +289,10 @@ pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction>
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 if visible_pairs.is_empty() {
-                    let msg = if filter.is_empty() {
-                        "No models found. Use the Import panel below to download one."
+                    let msg = if narrowed {
+                        "No models match the filters."
                     } else {
-                        "No models match the filter."
+                        "No models found. Use the Import panel below to download one."
                     };
                     ui.add_space(widgets::GAP_SECTIONS);
                     ui.vertical_centered(|ui| {
@@ -303,6 +303,7 @@ pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction>
                 for (model, modality) in &visible_pairs {
                     let modality = *modality;
                     let is_loaded = models.is_loaded(&model.name);
+                    let others_loaded = models.loaded_models.iter().any(|m| *m != model.name);
                     let is_selected = models.selected_model.as_deref() == Some(&model.name);
 
                     // A row: raised when selected, with a stripe; a hairline under
@@ -357,13 +358,15 @@ pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction>
                                 ui.with_layout(
                                     egui::Layout::right_to_left(egui::Align::Center),
                                     |ui| {
-                                        if !is_loaded {
+                                        {
                                             let resp = ui.add_enabled(
-                                                !action_busy,
+                                                !action_busy && !is_loaded,
                                                 egui::Button::new(text::note("Delete"))
                                                     .frame(false),
                                             );
-                                            let tip = if action_busy {
+                                            let tip = if is_loaded {
+                                                "Unload this model before deleting it"
+                                            } else if action_busy {
                                                 "Another model action is in progress"
                                             } else {
                                                 "Delete this model from disk"
@@ -377,7 +380,14 @@ pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction>
                                         let (label, tip) = if is_loaded {
                                             ("Unload", "Unload from memory (keeps the file)")
                                         } else {
-                                            ("Load", "Load into memory for inference")
+                                            (
+                                                "Load",
+                                                if others_loaded {
+                                                    "Load into memory for inference.\nThe models already loaded are unloaded first."
+                                                } else {
+                                                    "Load into memory for inference"
+                                                },
+                                            )
                                         };
                                         let gated = action_busy && !is_loaded;
                                         let resp = ui.add_enabled(
@@ -495,21 +505,14 @@ pub fn render(ui: &mut egui::Ui, models: &mut ModelState) -> Vec<SettingsAction>
                     let tip = if pills_busy {
                         "Another model action is in progress".to_string()
                     } else {
-                        format!(
-                            "{}\nPull {} from {}",
-                            desc,
-                            name,
-                            if models.pull_source == "huggingface" {
-                                "HuggingFace"
-                            } else {
-                                "Ollama"
-                            },
-                        )
+                        format!("{desc}\nPull {name} from Ollama")
                     };
                     if resp.on_hover_text(tip).clicked() {
+                        // The quick installs are Ollama tags, whatever the import
+                        // bar below has selected.
                         actions.push(SettingsAction::PullModel(
                             name.to_string(),
-                            models.pull_source.clone(),
+                            "ollama".to_string(),
                         ));
                     }
                 }
@@ -569,5 +572,28 @@ mod tests {
             Some("llama3.2:1b"),
             "the row click selected"
         );
+    }
+}
+
+/// The count beside the list: the total, or how many of it a filter leaves.
+fn count_text(visible: usize, total: usize, narrowed: bool) -> String {
+    if !narrowed || visible == total {
+        format!("{} model{}", total, if total == 1 { "" } else { "s" })
+    } else {
+        format!("{visible} of {total}")
+    }
+}
+
+#[cfg(test)]
+mod count_tests {
+    use super::count_text;
+
+    #[test]
+    fn a_filter_of_any_kind_shows_how_many_remain() {
+        assert_eq!(count_text(3, 3, false), "3 models");
+        assert_eq!(count_text(1, 1, false), "1 model");
+        assert_eq!(count_text(2, 5, true), "2 of 5");
+        assert_eq!(count_text(0, 5, true), "0 of 5");
+        assert_eq!(count_text(5, 5, true), "5 models");
     }
 }

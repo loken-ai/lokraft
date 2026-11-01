@@ -9,6 +9,7 @@ All notable changes to lokraft. The format follows [Keep a Changelog](https://ke
 - chat: send the whole conversation to a text model.
 - studio: show the video cost estimate.
 - terminal: report an unload once the server has answered.
+- models: count with the kind filter, pull quick installs from Ollama, explain Delete and Load.
 - chat: let Auto send without a model picked.
 - terminal: name every command the same way in the header and help.
 - chat: name Auto where the model is shown.
