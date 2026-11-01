@@ -52,6 +52,57 @@ pub fn pill(ui: &mut Ui, label: &str) -> Response {
         .response
 }
 
+/// A small tag that names a state, such as the active connection.
+pub fn badge(ui: &mut Ui, label: &str) -> Response {
+    egui::Frame::NONE
+        .fill(theme::accent_soft())
+        .corner_radius(CornerRadius::same(4))
+        .inner_margin(Margin::symmetric(6, 1))
+        .show(ui, |ui| {
+            ui.label(
+                RichText::new(label)
+                    .font(FontId::new(
+                        text::LABEL_PT,
+                        egui::FontFamily::Name(theme::FONT_MEDIUM.into()),
+                    ))
+                    .color(theme::accent()),
+            )
+        })
+        .response
+}
+
+/// A card that holds a list: a border, rounded corners, and rows set apart by hairlines.
+pub fn list_card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+    egui::Frame::NONE
+        .fill(theme::panel())
+        .stroke(Stroke::new(HAIRLINE, theme::border()))
+        .corner_radius(CornerRadius::same(PANEL_RADIUS))
+        .show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            ui.spacing_mut().item_spacing.y = 0.0;
+            add(ui)
+        })
+        .inner
+}
+
+/// One row of a `list_card`. `first` is false for every row after the first, which then gets
+/// a hairline above it.
+pub fn list_row<R>(ui: &mut Ui, first: bool, add: impl FnOnce(&mut Ui) -> R) -> R {
+    if !first {
+        let y = ui.cursor().top();
+        let x = ui.max_rect().x_range();
+        ui.painter()
+            .hline(x, y, Stroke::new(HAIRLINE, theme::border()));
+    }
+    egui::Frame::NONE
+        .inner_margin(Margin::symmetric(12, 10))
+        .show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            add(ui)
+        })
+        .inner
+}
+
 /// Size of the icon on a button.
 const BUTTON_ICON_PT: f32 = 11.0;
 

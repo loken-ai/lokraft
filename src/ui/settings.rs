@@ -379,53 +379,58 @@ fn connections_panel(
         let mut edit: Option<crate::connection::Connection> = None;
         let mut remove: Option<String> = None;
 
-        for connection in &config.connections {
-            let is_active = active.as_deref() == Some(connection.name.as_str());
-            widgets::well(ui, |ui| {
-                ui.horizontal(|ui| {
-                    // The lamp of the active connection follows the connection itself.
-                    let lit = is_active
-                        && connection_state != crate::state::ConnectionState::Disconnected;
-                    widgets::lamp_inline(ui, lit, connection_state.color());
-                    ui.label(text::value(&connection.name));
-                    ui.label(text::readout(&connection.url));
-                    if connection.api_key.is_some() {
-                        ui.label(text::note("key set"));
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let del = egui::Button::new(text::note("Delete").color(theme::error()))
-                            .frame(false);
-                        let tip = if only_one {
-                            "Keep at least one connection"
-                        } else {
-                            "Delete this connection"
-                        };
-                        if ui.add_enabled(!only_one, del).on_hover_text(tip).clicked() {
-                            remove = Some(connection.name.clone());
-                        }
-                        ui.add_space(widgets::GAP_LABEL);
-                        if ui
-                            .add(egui::Button::new(text::note("Edit")).frame(false))
-                            .on_hover_text("Change the name, the address or the key")
-                            .clicked()
-                        {
-                            edit = Some(connection.clone());
-                        }
-                        ui.add_space(widgets::GAP_LABEL);
-                        if is_active {
-                            ui.label(text::note("Active"));
-                        } else if ui
-                            .add(egui::Button::new(text::note("Use")))
-                            .on_hover_text("Connect to this server")
-                            .clicked()
-                        {
-                            activate = Some(connection.name.clone());
-                        }
+        widgets::list_card(ui, |ui| {
+            for (index, connection) in config.connections.iter().enumerate() {
+                let is_active = active.as_deref() == Some(connection.name.as_str());
+                widgets::list_row(ui, index == 0, |ui| {
+                    ui.horizontal(|ui| {
+                        // The lamp of the active connection follows the connection itself.
+                        let lit = is_active
+                            && connection_state != crate::state::ConnectionState::Disconnected;
+                        widgets::lamp_inline(ui, lit, connection_state.color());
+                        ui.vertical(|ui| {
+                            ui.label(text::value(&connection.name));
+                            let mut detail = connection.url.clone();
+                            if connection.api_key.is_some() {
+                                detail.push_str("   key set");
+                            }
+                            ui.label(text::readout(&detail));
+                        });
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let tip = if only_one {
+                                "Keep at least one connection"
+                            } else {
+                                "Delete this connection"
+                            };
+                            if ui
+                                .add_enabled(!only_one, widgets::quiet_button("Delete"))
+                                .on_hover_text(tip)
+                                .clicked()
+                            {
+                                remove = Some(connection.name.clone());
+                            }
+                            if ui
+                                .add(widgets::quiet_button("Edit"))
+                                .on_hover_text("Change the name, the address or the key")
+                                .clicked()
+                            {
+                                edit = Some(connection.clone());
+                            }
+                            if is_active {
+                                widgets::badge(ui, "Active");
+                            } else if ui
+                                .add(egui::Button::new(text::note("Use")))
+                                .on_hover_text("Connect to this server")
+                                .clicked()
+                            {
+                                activate = Some(connection.name.clone());
+                            }
+                        });
                     });
                 });
-            });
-            ui.add_space(widgets::GAP_LABEL);
-        }
+            }
+        });
+        ui.add_space(widgets::GAP_WIDGETS);
 
         if let Some(name) = activate {
             config.activate_connection(&name);
@@ -510,18 +515,31 @@ fn settings_panel(ui: &mut egui::Ui, caps: &str, add_body: impl FnOnce(&mut egui
 /// A form row: the label in capitals in a column of fixed width, right
 /// aligned, and the content beside it.
 fn form_row(ui: &mut egui::Ui, caps: &str, add_content: impl FnOnce(&mut egui::Ui)) {
-    ui.horizontal(|ui| {
-        ui.allocate_ui(
-            egui::vec2(widgets::FORM_LABEL_W, ui.spacing().interact_size.y),
-            |ui| {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.add_space(widgets::GAP_WIDGETS);
-                    ui.label(text::label(caps));
-                });
-            },
-        );
-        add_content(ui);
-    });
+    ui.add_space(widgets::GAP_LABEL);
+    ui.label(text::field_label(&sentence_case(caps)));
+    ui.add_space(widgets::GAP_LABEL);
+    add_content(ui);
+    ui.add_space(widgets::GAP_WIDGETS);
+}
+
+/// `API KEY` becomes `API key`, `SERVER URL` becomes `Server URL`.
+fn sentence_case(caps: &str) -> String {
+    const ACRONYMS: [&str; 5] = ["API", "URL", "GPU", "VRAM", "MIDI"];
+    caps.split(' ')
+        .enumerate()
+        .map(|(i, word)| {
+            if ACRONYMS.contains(&word) {
+                return word.to_string();
+            }
+            let lower = word.to_lowercase();
+            let mut chars = lower.chars();
+            match (i, chars.next()) {
+                (0, Some(first)) => first.to_uppercase().chain(chars).collect(),
+                _ => lower,
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Two labelled text fields side by side.
@@ -738,5 +756,18 @@ fn render_inapp_folder_picker(ctx: &egui::Context, editor: &mut ConfigEditorStat
         editor.inapp_picker = None;
     } else if let Some(p) = new_path {
         editor.inapp_picker = Some((target, p));
+    }
+}
+
+#[cfg(test)]
+mod label_tests {
+    use super::sentence_case;
+
+    #[test]
+    fn a_capitalised_label_reads_as_a_sentence() {
+        assert_eq!(sentence_case("NAME"), "Name");
+        assert_eq!(sentence_case("API KEY"), "API key");
+        assert_eq!(sentence_case("SERVER URL"), "Server URL");
+        assert_eq!(sentence_case("MODEL ID"), "Model id");
     }
 }
