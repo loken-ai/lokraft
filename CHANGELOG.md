@@ -4,6 +4,8 @@ All notable changes to lokraft. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-02
+
 ### Added
 
 - studio: cancel an image, MIDI, edit, split or transcription render before it ends.
